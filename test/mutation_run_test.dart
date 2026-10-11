@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dart_mutant/src/mutant.dart';
 import 'package:dart_mutant/src/mutation_run.dart';
+import 'package:dart_mutant/src/shard.dart';
 import 'package:test/test.dart';
 
 const source = 'int a(int x) =>\n    x + 1;\n';
@@ -122,6 +123,7 @@ void main() {
         'schemaVersion': '2',
         'thresholds': {'high': 100, 'low': 100},
         'framework': {'name': 'dart_mutant', 'version': '0.1.0'},
+        'config': {'mutatorsVersion': 2},
         'files': {
           'lib/a.dart': {
             'language': 'dart',
@@ -156,6 +158,41 @@ void main() {
       });
     });
 
+    test('a part of a run says which one it is, and what could not be '
+        'tested; its other mutants are Pending', () {
+      final report = buildReport(
+        {
+          'lib/a.dart': runOf([
+            const MutantResult(plus, notRun),
+            const MutantResult(one, killed),
+          ]),
+        },
+        shard: const Shard(2, 2),
+        notTested: ['lib/b.dart'],
+      );
+      expect(report['config'], {
+        'mutatorsVersion': 2,
+        'shard': {
+          'index': 2,
+          'count': 2,
+          'notTested': ['lib/b.dart'],
+        },
+      });
+      expect(
+        [
+          for (final mutant
+              in ((report['files']! as Map)['lib/a.dart'] as Map)['mutants']
+                  as List)
+            (mutant as Map)['status'],
+        ],
+        ['Pending', 'Killed'],
+      );
+      // The files that could not be tested are only named in a part.
+      expect(buildReport(const {}, notTested: ['lib/b.dart'])['config'], {
+        'mutatorsVersion': 2,
+      });
+    });
+
     test('the files of an earlier report come first, as they were', () {
       final report = buildReport(
         {'lib/a.dart': runOf(const [])},
@@ -184,6 +221,28 @@ void main() {
     expect(otherReportFiles('{', ['lib/a.dart']), isEmpty);
     expect(otherReportFiles('[]', ['lib/a.dart']), isEmpty);
     expect(otherReportFiles('{"files": 1}', ['lib/a.dart']), isEmpty);
+  });
+
+  test('otherReportFiles: nothing is kept of a part of a run', () {
+    final files = {
+      'lib/b.dart': {'b': 1},
+    };
+    expect(
+      otherReportFiles(
+        jsonEncode({
+          'config': reportConfig(shard: const Shard(1, 2)),
+          'files': files,
+        }),
+        ['lib/a.dart'],
+      ),
+      isEmpty,
+    );
+    expect(
+      otherReportFiles(jsonEncode({'config': reportConfig(), 'files': files}), [
+        'lib/a.dart',
+      ]),
+      files,
+    );
   });
 
   test('carriedResults: --force forgets the files of the run and nothing '
@@ -266,6 +325,17 @@ void main() {
         MutantResult(plus, timeout),
       ]);
       expect(reused(withTimeout, input), ['ArithmeticOperator null null']);
+    });
+
+    test('a mutant that was left to another part has no status yet', () {
+      final part = incrementalEntry(input, const [
+        MutantResult(plus, notRun),
+        MutantResult(one, killed),
+      ]);
+      expect(reused(jsonDecode(jsonEncode(part)), input), [
+        'ArithmeticOperator null null',
+        'NumberLiteral Killed null',
+      ]);
     });
 
     test('anything else that changed: nothing is reused', () {
@@ -409,6 +479,31 @@ void main() {
           'lib/b.dart': runOf(const [MutantResult(padded, survived)]),
         }),
         ['  lib/b.dart:1:16 BlockStatement: x + 1; → {}'],
+      );
+    });
+
+    test('a part of a run: how many of the mutants are its own', () {
+      final part = runOf(const [
+        MutantResult(plus, notRun),
+        MutantResult(one, killed),
+        MutantResult(one, notRun),
+        MutantResult(one, compileError, reason: 'why'),
+        MutantResult(one, notRun),
+      ]);
+      expect(
+        totalCounts([part]),
+        '2 of 5 mutants / killed 1 / survived 0 / timeout 0 / compile error 1 '
+        '(1 found before the run)',
+      );
+      expect(
+        totalCounts([part, run]),
+        '7 of 10 mutants / killed 2 / survived 1 / timeout 1 / compile error '
+        '3 (2 found before the run)',
+      );
+      expect(
+        fileLine('lib/a.dart', part, reused: 1, milliseconds: 0),
+        '  lib/a.dart: 2 of 5 mutants / killed 1 / survived 0 / timeout 0 / '
+        'compile error 1 (1 found before the run) (1 from the last run, 0.0s)',
       );
     });
 

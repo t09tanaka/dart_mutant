@@ -21,6 +21,16 @@
       "impact": "A mutant the tests did not notice is reported as killed, a place in the report points at other code, or an outdated result is reused after the file, its tests or the command changed"
     },
     {
+      "path": "lib/src/shard.dart",
+      "decides": "Which mutants of a file a part of a run with --shard takes, what a value of --shard is, and how a report says that it is a part",
+      "impact": "A mutant belongs to no part and is never run, or the report of a part is taken for the report of a whole run"
+    },
+    {
+      "path": "lib/src/merge.dart",
+      "decides": "Whether the reports given to merge are all parts of one run, each exactly once, and the result each mutant gets in the report of the whole run",
+      "impact": "A part that is missing, given twice or made from another source goes unnoticed, and mutants that were never run pass as killed"
+    },
+    {
       "path": "lib/src/html_report.dart",
       "decides": "The page of --html: how the report is put into a script, what is escaped, where the viewer comes from, and which file counts as such a page",
       "impact": "A source that holds </script> breaks the page or runs as markup in the reader's browser, or --html overwrites a file that is not a report"
@@ -47,8 +57,8 @@
     },
     {
       "path": "lib/src/json.dart",
-      "decides": "What counts as an object and as a list of strings when a plan, a report, a package configuration and the results of the last run are read",
-      "impact": "A file of another shape is read as valid and the run works from wrong data instead of refusing it"
+      "decides": "What counts as an object and as a list of strings when a plan, a report, a package configuration and the results of the last run are read, and when two JSON values are the same",
+      "impact": "A file of another shape is read as valid and the run works from wrong data instead of refusing it, or a result is reused, or a part is merged, although what it was made from differs"
     },
     {
       "path": "lib/src/output.dart",
@@ -69,7 +79,7 @@
     },
     {
       "path": "lib/src/commands",
-      "decides": "The order of the steps of a run, what is printed, when a file is written and put back, and the exit code",
+      "decides": "The order of the steps of a run and of a merge, what is printed, when a file is written and put back, and the exit code",
       "blocker": "Reads and writes files, copies the package and starts processes. The decisions it acts on are taken in the gates; what is left is tested with a stand-in for the test runner in test/commands"
     },
     {

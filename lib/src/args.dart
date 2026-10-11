@@ -1,3 +1,5 @@
+import 'shard.dart';
+
 /// The command line of `dart_mutant run`.
 class RunArgs {
   const RunArgs({
@@ -7,6 +9,7 @@ class RunArgs {
     this.html,
     this.force = false,
     this.jobs,
+    this.shard,
     this.only = const [],
     this.targets = const [],
     this.command = const [],
@@ -31,6 +34,10 @@ class RunArgs {
   /// `--jobs`: how many test runs are started at a time. `null` when it is
   /// not given: the number then depends on the machine.
   final int? jobs;
+
+  /// `--shard`: the part of the mutants of each file that this run takes,
+  /// when the run is divided.
+  final Shard? shard;
 
   /// `--only`, once per file: the run is limited to these targets.
   final List<String> only;
@@ -61,6 +68,27 @@ class RunCommandArgs extends ParsedArgs {
   final RunArgs run;
 }
 
+/// The command line of `dart_mutant merge`.
+class MergeArgs {
+  const MergeArgs({required this.parts, required this.report, this.html});
+
+  /// The reports of the parts of a run with `--shard`.
+  final List<String> parts;
+
+  /// `--report`: where the report of the whole run is written.
+  final String report;
+
+  /// `--html`: where it is written as a page for a browser, when that is
+  /// wanted.
+  final String? html;
+}
+
+class MergeCommandArgs extends ParsedArgs {
+  const MergeCommandArgs(this.merge);
+
+  final MergeArgs merge;
+}
+
 class UsageError implements Exception {
   UsageError(this.message);
 
@@ -77,7 +105,11 @@ const _valueOptions = [
   '--html',
   '--only',
   '--jobs',
+  '--shard',
 ];
+
+/// The options of `merge`, of those above.
+const _mergeOptions = ['--report', '--html'];
 
 /// Reads the command line. Throws [UsageError] for anything it does not
 /// know: a misspelled option must not become a run of something else.
@@ -96,8 +128,12 @@ ParsedArgs parseArgs(List<String> argv) {
   if (own.isEmpty) {
     throw UsageError('no command given');
   }
-  if (own.first != 'run') {
+  final merge = own.first == 'merge';
+  if (own.first != 'run' && !merge) {
     throw UsageError('unknown command "${own.first}"');
+  }
+  if (merge && rest.isNotEmpty) {
+    throw UsageError('merge runs no tests: "--" and a command do not belong');
   }
   if (rest.isNotEmpty && command.isEmpty) {
     throw UsageError('"--" must be followed by the command that runs tests');
@@ -109,6 +145,7 @@ ParsedArgs parseArgs(List<String> argv) {
   String? html;
   var force = false;
   int? jobs;
+  Shard? shard;
   final only = <String>[];
   final targets = <String>[];
   final seen = <String>{};
@@ -122,6 +159,9 @@ ParsedArgs parseArgs(List<String> argv) {
     final parts = argument.split('=');
     final name = parts.first;
     final inline = parts.length > 1;
+    if (merge && !_mergeOptions.contains(name)) {
+      throw UsageError('unknown option "$name" for merge');
+    }
     if (name == '--force') {
       if (inline) {
         throw UsageError('--force takes no value');
@@ -168,7 +208,29 @@ ParsedArgs parseArgs(List<String> argv) {
         if (jobs == null || jobs < 1) {
           throw UsageError('--jobs needs a number from 1 ("$value")');
         }
+      case '--shard':
+        shard = parseShard(value);
+        if (shard == null) {
+          throw UsageError(
+            '--shard needs <index>/<count>, with an index from 1 to the '
+            'count ("$value")',
+          );
+        }
     }
+  }
+  if (merge) {
+    if (targets.isEmpty) {
+      throw UsageError(
+        'nothing to merge: give the reports of the parts of a run with '
+        '--shard',
+      );
+    }
+    if (report == null) {
+      throw UsageError('merge needs --report: where the report is written');
+    }
+    return MergeCommandArgs(
+      MergeArgs(parts: targets, report: report, html: html),
+    );
   }
   if (plan != null && targets.isNotEmpty) {
     throw UsageError(
@@ -187,6 +249,7 @@ ParsedArgs parseArgs(List<String> argv) {
       html: html,
       force: force,
       jobs: jobs,
+      shard: shard,
       only: only,
       targets: targets,
       command: command,
@@ -200,6 +263,7 @@ dart_mutant: mutation testing for Dart and Flutter.
 Usage:
   dart_mutant run [options] <file or glob>... [-- <test command>]
   dart_mutant run [options] --plan <plan.json> [-- <test command>]
+  dart_mutant merge <part.json>... --report <path> [--html <path>]
   dart_mutant --version | --help
 
 Each file is changed in one place at a time (a mutant) and its tests are run
@@ -236,6 +300,10 @@ Options:
   --jobs <n>       How many test runs are started at a time (default: a
                    quarter of the processors, at least 1 and at most 4).
                    1 changes the files in place, one mutant at a time.
+  --shard <i>/<n>  Run part i of n of the mutants of each file (mutant
+                   number modulo n), for a run that is divided over several
+                   machines. The report is then a part: the other mutants
+                   are in it as Pending.
   -h, --help       This text.
   --version        The version of this tool.
   -- <command>     The command that runs test files (default:
@@ -243,10 +311,18 @@ Options:
                    otherwise). "--fail-fast --timeout 10s" and the test files
                    are appended to it.
 
+merge puts the reports of the parts 1 to n of one run with --shard together
+and writes the report of the whole run to --report (and to --html as a
+page). It fails when a part is missing or given twice, or when the parts
+are not of the same run: another number of parts, other sources or
+mutants, another version of this tool.
+
 Exit code:
   0    no mutant survived
   1    a mutant survived, or a file could not be mutation tested, or
-       another run is at work in the package (nothing is changed then)
+       another run is at work in the package (nothing is changed then),
+       or the parts given to merge are not the parts of one run (no
+       report is written then)
   2    wrong usage
   130 / 143 / 129   interrupted (SIGINT / SIGTERM / SIGHUP); the working
                    copies were removed, or the files were put back''';
