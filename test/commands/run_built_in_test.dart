@@ -79,14 +79,14 @@ void main() {
 
 // A constant and an initializer that runs once, next to code that runs
 // every time.
-const table = '''
+const lookup = '''
 const names = ['zero', 'one'];
 final limit = names.length + 1;
 String nameOf(int n) => n < limit - 1 ? names[n] : 'many';
 ''';
 
-const tableTest = '''
-import 'package:built_in_fixture/table.dart';
+const lookupTest = '''
+import 'package:built_in_fixture/lookup.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -174,8 +174,8 @@ dev_dependencies:
     write('test/next_test.dart', nextTest);
     write('lib/sign.dart', sign);
     write('test/sign_test.dart', signTest(slowLog));
-    write('lib/table.dart', table);
-    write('test/table_test.dart', tableTest);
+    write('lib/lookup.dart', lookup);
+    write('test/lookup_test.dart', lookupTest);
     write('lib/twice.dart', twice);
     write('test/twice_test.dart', twiceTest);
     write('lib/cases.dart', cases);
@@ -362,17 +362,17 @@ dev_dependencies:
 
   test('what cannot be built in is run the usual way, and the rest is '
       'built in', () async {
-    final builtIn = await mutate('lib/table.dart', schemata: true);
+    final builtIn = await mutate('lib/lookup.dart', schemata: true);
     expect(builtIn, hasLength(14));
     expect(builtIn, everyElement(endsWith(': Killed')));
     expect(
       out,
-      contains(startsWith('  lib/table.dart: 8 of 14 mutant(s) built')),
+      contains(startsWith('  lib/lookup.dart: 8 of 14 mutant(s) built')),
     );
     expect(
-      builtInLine('lib/table.dart'),
+      builtInLine('lib/lookup.dart'),
       matches(
-        r'^  lib/table\.dart: \d+ killed with the mutants built in; '
+        r'^  lib/lookup\.dart: \d+ killed with the mutants built in; '
         r'(\d+) cannot be built in \(\1 in an initializer that runs once '
         r'in a process\)',
       ),
