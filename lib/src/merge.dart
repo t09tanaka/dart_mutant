@@ -71,9 +71,14 @@ int? _offsetOf(String source, Object? position) {
     }
     start = end + 1;
   }
-  final offset = start + column - 1;
-  return offset > source.length ? null : offset;
+  // A column past the end of its line would be a place in another line.
+  final next = source.indexOf('\n', start);
+  final length = (next < 0 ? source.length : next) - start;
+  return column - 1 > length ? null : start + column - 1;
 }
+
+/// The statuses a mutant can have in the report of a part.
+const _statuses = {killed, survived, timeout, compileError, notRun};
 
 _Mutant? _readMutant(String source, Object? value) {
   final mutant = asObject(value);
@@ -88,9 +93,10 @@ _Mutant? _readMutant(String source, Object? value) {
   if (mutant == null ||
       mutator is! String ||
       replacement is! String ||
-      status is! String ||
+      !_statuses.contains(status) ||
       (reason != null && reason is! String) ||
       duration is! int ||
+      duration < 0 ||
       offset == null ||
       end == null ||
       end < offset) {
@@ -104,7 +110,7 @@ _Mutant? _readMutant(String source, Object? value) {
     },
     MutantResult(
       Mutant(mutator, offset, end, replacement),
-      status,
+      status! as String,
       milliseconds: duration,
       reason: reason as String?,
     ),
@@ -166,6 +172,9 @@ String? _mismatch(String path, _Part part, _File file, _Part first) {
   return null;
 }
 
+/// How many parts that are missing are named, one line each.
+const _shownMissing = 20;
+
 /// Puts the parts of one run with `--shard` together: what the run would
 /// have found without `--shard`, for the files in the order of the parts.
 ///
@@ -180,7 +189,9 @@ String? _mismatch(String path, _Part part, _File file, _Part first) {
 ///   1 to that number is there once;
 /// - no part names a file that could not be mutation tested;
 /// - the parts have the same files, with the same source and the same
-///   mutants (a part of another commit has others);
+///   mutants (a part of another state of the file has others). The tests
+///   and the test command of a part are not in its report, so that they
+///   were the same is not checked;
 /// - every mutant was evaluated by the part it belongs to, and is `Pending`
 ///   in all others.
 ({Map<String, FileRun> files, List<String> problems}) mergeParts(
@@ -225,16 +236,26 @@ String? _mismatch(String path, _Part part, _File file, _Part first) {
   if (problems.isNotEmpty) {
     return refused(problems);
   }
-  for (final index in Iterable<int>.generate(count, (at) => at + 1)) {
-    final found = [
-      for (final part in parts)
-        if (part.shard.index == index) part.name,
-    ];
-    if (found.isEmpty) {
-      problems.add('shard $index/$count is missing');
-    } else if (found.length > 1) {
-      problems.add('shard $index/$count is given twice (${found.join(', ')})');
+  final given = <int, List<String>>{};
+  for (final part in parts) {
+    given.putIfAbsent(part.shard.index, () => []).add(part.name);
+  }
+  for (final MapEntry(key: index, value: names) in given.entries) {
+    if (names.length > 1) {
+      problems.add('shard $index/$count is given twice (${names.join(', ')})');
     }
+  }
+  // Not more lines than a reader wants, and never all of them looked at:
+  // the number of parts is whatever a file says.
+  final missing = Iterable<int>.generate(
+    count,
+    (at) => at + 1,
+  ).where((index) => !given.containsKey(index));
+  for (final index in missing.take(_shownMissing)) {
+    problems.add('shard $index/$count is missing');
+  }
+  if (missing.skip(_shownMissing).isNotEmpty) {
+    problems.add('more parts of the $count are missing');
   }
   if (problems.isNotEmpty) {
     return refused(problems);

@@ -196,6 +196,24 @@ void main() {
       ]);
     });
 
+    test('the first line of a file counts the mutants of the part: those '
+        'to run, and those of them that do not compile', () async {
+      // Of the ten mutants of the file one is refused by the analyzer.
+      var refused = 0;
+      for (final index in [1, 2]) {
+        package.out.clear();
+        await mutate(['--shard', '$index/2'], files: ['lib/a.dart']);
+        final line = RegExp(
+          r'^  lib/a\.dart: (\d) of 10 mutant\(s\) with ".*"( \((\d) do not '
+          r'compile\))?$',
+        ).firstMatch(package.out.first)!;
+        final own = int.parse(line[3] ?? '0');
+        expect(int.parse(line[1]!) + own, 5, reason: package.out.first);
+        refused += own;
+      }
+      expect(refused, 1);
+    });
+
     test('a survivor of a part fails the part, and only that one', () async {
       // `-` → `+` survives: the second mutant.
       expect(await mutate(['--shard', '1/2'], files: ['lib/b.dart']), 0);

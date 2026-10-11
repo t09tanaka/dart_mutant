@@ -247,14 +247,14 @@ One file with many mutants, or with slow tests, takes as long as it takes: `--jo
 
 ```
 $ dart_mutant run lib/discount.dart --shard 1/2 --report reports/parts/1.json
-  lib/discount.dart: 9 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 3 at a time (4 do not compile)
-  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (8.9s)
+  lib/discount.dart: 9 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 3 at a time (2 do not compile)
+  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (7.7s)
 Survived:
   lib/discount.dart:7:30 NumberLiteral: 0 → 1
 dart_mutant: FAILED (shard 1/2: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run))
 $ dart_mutant run lib/discount.dart --shard 2/2 --report reports/parts/2.json
-  lib/discount.dart: 9 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 3 at a time (4 do not compile)
-  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (10.1s)
+  lib/discount.dart: 9 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 3 at a time (2 do not compile)
+  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (7.7s)
 Survived:
   lib/discount.dart:8:39 MethodExpression: round → ceil
 dart_mutant: FAILED (shard 2/2: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run))
@@ -270,7 +270,7 @@ dart_mutant: FAILED (2 part(s) merged: 22 mutants / killed 16 / survived 2 / tim
 
 **Which mutant is in which part.** The mutant with the number `k` of a file (the `k` of its id `lib/a.dart#k`, from 0) belongs to part `k mod n`, plus one: with `--shard 1/4` the mutants 0, 4, 8, …. The numbers are the same in every run of the same source, whatever `--jobs`, the order of the files and the results of the last run are, so every mutant belongs to exactly one part. The syntax mutants come first and the typed ones after them, both in the order of the source, so each part gets its share of every region of the file and of both kinds. A mutant that does not compile is reported by the part it belongs to, like any other; it costs that part no test run.
 
-Every part makes and checks **all** mutants of a file (it has to, to number them), and runs the tests without a mutant. That is what a part costs before its first mutant: the same as a whole run. What is divided is the test runs on the mutants.
+Every part makes and checks **all** mutants of a file (it has to, to number them), and a part that has a mutant to run first runs the tests without a mutant. That is what a part costs before its first mutant: the same as a whole run. What is divided is the test runs on the mutants. The first line of a file counts the part's own mutants (`9 of 22 mutant(s) … (2 do not compile)`: nine to run, two that do not compile, of 22 in the file).
 
 **The report of a part is not a result.** It is a valid report in the same schema, and it lists every mutant of the file, but the mutants of the other parts have the status `Pending`, and `config.shard` says which part it is:
 
@@ -288,7 +288,7 @@ dart_mutant merge <part.json>... --report <path> [--html <path>]
 
 reads the reports of the parts `1/n` to `n/n` of one run and writes the report that the run would have written without `--shard`: the same files, mutants, ids, order and statuses (and `duration` as each part measured it). It prints the counts, the survivors and the totals like a run, and its exit code is 0 when no mutant survived and 1 when one did. It needs no package, and runs nothing.
 
-**It refuses parts that are not all the parts of one run**, with exit code 1 and without writing a report (the report and the page that were at `--report` and `--html` are removed first, so nothing old can be read as the result):
+**It refuses parts that are not all the parts of one run**, with exit code 1 and without writing a report (the report and the page that were at `--report` and `--html` are removed before the parts are looked at, so nothing old can be read as the result; wrong usage, exit code 2, changes nothing):
 
 ```
 $ dart_mutant merge reports/parts/1.json --report reports/mutation/mutation.json
@@ -298,14 +298,16 @@ dart_mutant: FAILED (nothing was merged)
 ```
 
 - a file that is not the report of a part (the report of a whole run, or anything else);
-- a part that is missing, or given twice;
+- a part that is missing (the first twenty are named), or given twice;
 - parts of different divisions (`1/2` and `2/4`);
 - a part that was written by another version of this tool or of its mutators than the one that merges;
-- parts with different files, another source of a file, or other mutants (a part of another commit, or made with other dependencies);
-- a mutant that its own part did not evaluate, or that another part gave a status;
+- parts with different files, another source of a file, or other mutants (a part of another state of the file, or made with other dependencies);
+- a mutant that its own part did not evaluate, or that another part gave a status, or a status, a place or a duration that a report of this tool cannot have;
 - a file that could not be mutation tested in a part (no test, tests that fail without a mutant, …). Such a file is not in a report, so each part names it in `config.shard.notTested`.
 
 A part that did not run must not pass for mutants that were killed: that is what these checks are for.
+
+**What is not checked: the tests.** A part does not say which test files and which test command it was run with, so parts of the same source that were run with different tests fit together. Run the parts from one commit and with one command; the jobs of one workflow run do.
 
 ### With the other options
 

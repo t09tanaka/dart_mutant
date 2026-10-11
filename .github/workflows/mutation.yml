@@ -100,8 +100,8 @@ jobs:
           pattern: mutation-part-*
           path: parts
       # The gates that were run in parts: `dart_mutant merge` fails when a
-      # part is missing, given twice or not of this commit, and test_gates
-      # judges what the parts are together.
+      # part is missing, given twice or made from another source, and
+      # test_gates judges what the parts are together.
       - run: dart run tool/self_mutation.dart --merge parts
       - uses: actions/upload-artifact@v4
         if: always()

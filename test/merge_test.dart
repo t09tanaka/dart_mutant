@@ -146,6 +146,16 @@ void main() {
     final merged = mergeParts(partsOf(2, files: files));
     expect(merged.problems, isEmpty);
     expect(buildReport(merged.files), buildReport(files));
+
+    // The first line is empty: it has one place, and no second column.
+    for (final (column, problems) in [(1, 0), (2, 1)]) {
+      final parts = partsOf(2, files: files);
+      for (final part in parts) {
+        (mutantOf(part, 'lib/a.dart', 0)['location']! as JsonObject)['start'] =
+            {'line': 1, 'column': column};
+      }
+      expect(mergeParts(parts).problems, hasLength(problems * 2));
+    }
   });
 
   group('what is not a part', () {
@@ -237,6 +247,10 @@ void main() {
         ('replacement', null),
         ('status', true),
         ('statusReason', 1),
+        ('status', 'survived'),
+        ('status', 'Ignored'),
+        ('status', ''),
+        ('duration', -1),
         ('duration', '5'),
         ('duration', 1.5),
         ('location', 'here'),
@@ -266,6 +280,10 @@ void main() {
         ('start', {'line': 9, 'column': 1}),
         ('end', {'line': 4, 'column': 1}),
         ('end', {'line': 3, 'column': 2}),
+        // Past the end of its line: that would be a place in the next one.
+        ('start', {'line': 1, 'column': 17}),
+        ('end', {'line': 2, 'column': 12}),
+        ('end', {'line': 2, 'column': 9223372036854775807}),
         // The end is before the start.
         ('end', {'line': 2, 'column': 6}),
         ('end', {'line': 1, 'column': 16}),
@@ -279,6 +297,9 @@ void main() {
 
     test('a place at the edges of the source is one', () {
       for (final (edge, position) in [
+        // The end of a line, before its line end.
+        ('start', {'line': 1, 'column': 16}),
+        ('end', {'line': 2, 'column': 11}),
         ('start', {'line': 1, 'column': 1}),
         ('end', {'line': 3, 'column': 1}),
         ('end', {'line': 2, 'column': 7}),
@@ -310,6 +331,25 @@ void main() {
       expect(mergeParts(partsOf(4)..removeLast()).problems, [
         'shard 4/4 is missing',
       ]);
+    });
+
+    test('of many parts that are missing, the first twenty are named', () {
+      List<String> problemsOf(int count) => mergeParts([
+        (name: 'p', content: partReport(Shard(2, count), files: const {})),
+      ]).problems;
+      expect(problemsOf(21), [
+        'shard 1/21 is missing',
+        for (var index = 3; index <= 21; index++) 'shard $index/21 is missing',
+      ]);
+      expect(problemsOf(22), [
+        'shard 1/22 is missing',
+        for (var index = 3; index <= 21; index++) 'shard $index/22 is missing',
+        'more parts of the 22 are missing',
+      ]);
+      // However many a file claims there are.
+      final many = problemsOf(4611686018427387904);
+      expect(many, hasLength(21));
+      expect(many.last, 'more parts of the 4611686018427387904 are missing');
     });
 
     test('a part is given twice', () {

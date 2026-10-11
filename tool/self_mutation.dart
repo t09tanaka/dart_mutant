@@ -133,6 +133,11 @@ Future<void> main(List<String> arguments) async {
     }
   }
 
+  // The names of the artifacts and of the merged reports are made of them.
+  if (paths.map(_slug).toSet().length != paths.length) {
+    _fail('two gates of test-gates.json have the same name without "/"');
+  }
+
   if (matrix) {
     if (arguments.length != 1) {
       _usage();
@@ -175,7 +180,9 @@ Future<void> main(List<String> arguments) async {
       _fail('--shard needs exactly one --gate');
     }
     final count = _shards[gates.single] ?? 1;
-    if (!RegExp('^[1-9][0-9]*/$count\$').hasMatch(shard)) {
+    if (![
+      for (var index = 1; index <= count; index++) '$index/$count',
+    ].contains(shard)) {
       _fail(
         '--shard $shard: ${gates.single} is run in $count part(s) '
         '(_shards in tool/self_mutation.dart)',

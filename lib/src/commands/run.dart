@@ -857,7 +857,9 @@ Future<int> _locked(
               ? pending.length
               : copies.jobs;
           final run = mutantCommand(command, target.tests);
-          final refused = statuses.where((s) => s == compileError).length;
+          final refused = own
+              .where((index) => statuses[index] == compileError)
+              .length;
           io.out(
             '  $path: ${pending.length} of ${mutants.length} mutant(s) with '
             '"${run.join(' ')}", $workers at a time'
@@ -903,7 +905,9 @@ Future<int> _locked(
       if (remaining.isNotEmpty) {
         inPlace = true;
         final run = mutantCommand(command, target.tests);
-        final refused = statuses.where((s) => s == compileError).length;
+        final refused = own
+            .where((index) => statuses[index] == compileError)
+            .length;
         if (!announced) {
           io.out(
             '  $path: ${pending.length} of ${mutants.length} mutant(s) with '
@@ -1017,12 +1021,15 @@ Future<int> _locked(
       }
 
       // What is known of every mutant, also of those of another part: a
-      // later run in this package starts from it.
+      // later run in this package starts from it. Every mutant of this
+      // run has a status by now; only one of another part may have none.
       final known = [
         for (final (index, mutant) in mutants.indexed)
           MutantResult(
             mutant,
-            statuses[index] ?? notRun,
+            shard == null || shard.has(index)
+                ? statuses[index]!
+                : statuses[index] ?? notRun,
             milliseconds: milliseconds[index],
             reason: reasons[index],
           ),
