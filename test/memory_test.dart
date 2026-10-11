@@ -43,21 +43,27 @@ void main() {
       expect(processTree(listing, 1).descendants, [10, 20, 11, 12, 13]);
     });
 
-    test('a line that is not three numbers is left out', () {
+    test('a line that has not three fields, or no number for a process or '
+        'its parent, is left out', () {
       const odd = '''
   PID  PPID   RSS
    10     1   100
    11    10
    12    10     3     7
-   13    10     x
    14     x     5
     x    10     5
-   15    10    -
    16    10     8
 ''';
       final tree = processTree(odd, 10);
       expect(tree.descendants, [16]);
       expect(tree.kilobytes, 108);
+    });
+
+    test('memory that is no number counts as nothing, and the process is '
+        'still below its parent', () {
+      final tree = processTree('10 1 12m\n11 10 -\n12 11 5\n', 10);
+      expect(tree.descendants, [11, 12]);
+      expect(tree.kilobytes, 5);
     });
 
     test('tabs and several blanks separate, and blanks around a line do '

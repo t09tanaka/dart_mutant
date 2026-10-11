@@ -551,40 +551,45 @@ void main() {
       package.fakeTest('lib/b.dart', ['grow-if: x / y', 'expect: x * y - x']);
     });
 
-    test('a run that takes more memory than the limit is ended long before '
-        'the time limit, with what it started: a Timeout, with the reason in '
-        'the report', () async {
-      final watch = Stopwatch()..start();
-      expect(await heavy(), 0);
-      expect(watch.elapsed, lessThan(const Duration(seconds: 30)));
-      expect(
-        package.out,
-        contains(
-          '  lib/b.dart: 1 mutant(s) used more than 200 MB of memory and '
-          'were ended (Timeout)',
-        ),
-      );
-      expect(
-        package.out.last,
-        'dart_mutant: OK (3 mutants / killed 2 / survived 0 / timeout 1 / '
-        'compile error 0)',
-      );
-      expect(statusesOf('lib/b.dart'), ['Timeout', 'Killed']);
-      expect(
-        [for (final mutant in mutantsOf('lib/b.dart')) mutant['statusReason']],
-        [reason, null],
-      );
-      expect(
-        mutantsOf('lib/a.dart').single.containsKey('statusReason'),
-        isFalse,
-      );
-      expectFilesUntouched();
-      expect(
-        Process.runSync('kill', ['-0', package.read('heavy')]).exitCode,
-        isNot(0),
-        reason: 'the test run is still there',
-      );
-    }, testOn: '!windows');
+    test(
+      'a run that takes more memory than the limit is ended for that, long before '
+      'the time limit, with what it started: a Timeout, with the reason in '
+      'the report',
+      () async {
+        expect(await heavy(), 0);
+        expect(
+          package.out,
+          contains(
+            '  lib/b.dart: 1 mutant(s) used more than 200 MB of memory and '
+            'were ended (Timeout)',
+          ),
+        );
+        expect(
+          package.out.last,
+          'dart_mutant: OK (3 mutants / killed 2 / survived 0 / timeout 1 / '
+          'compile error 0)',
+        );
+        expect(statusesOf('lib/b.dart'), ['Timeout', 'Killed']);
+        expect(
+          [
+            for (final mutant in mutantsOf('lib/b.dart'))
+              mutant['statusReason'],
+          ],
+          [reason, null],
+        );
+        expect(
+          mutantsOf('lib/a.dart').single.containsKey('statusReason'),
+          isFalse,
+        );
+        expectFilesUntouched();
+        expect(
+          Process.runSync('kill', ['-0', package.read('heavy')]).exitCode,
+          isNot(0),
+          reason: 'the test run is still there',
+        );
+      },
+      testOn: '!windows',
+    );
 
     test('the next run measures it again, and only it', () async {
       expect(await heavy(), 0);

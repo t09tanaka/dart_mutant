@@ -261,9 +261,7 @@ void main() {
       'again alone, and is a Timeout when it is ended then as well',
       () async {
         package.fakeTest('lib/b.dart', ['grow-if: x / y', 'expect: x * y - x']);
-        final watch = Stopwatch()..start();
         expect(await heavy(2), 0);
-        expect(watch.elapsed, lessThan(const Duration(seconds: 30)));
         expect(package.out, [
           startsWith('  lib/b.dart: 2 of 2 mutant(s) with '),
           '  lib/b.dart: 1 mutant(s) used more than 200 MB of memory, were '

@@ -5,7 +5,11 @@ const processListing = ['-A', '-o', 'pid=,ppid=,rss='];
 
 /// The processes that descend from [root] in [listing] (what `ps` printed
 /// for [processListing]), and the memory that [root] and they hold
-/// together, in kilobytes. A line that is not three numbers is left out.
+/// together, in kilobytes. A line that does not start with two numbers, or
+/// has more or less than three fields, is left out; a third field that is
+/// no number (a `ps` that prints `12m`) counts as nothing held, and the
+/// process is still found below its parent: the tree is also what is ended
+/// at a time limit.
 ({List<int> descendants, int kilobytes}) processTree(String listing, int root) {
   final children = <int, List<int>>{};
   final held = <int, int>{};
@@ -14,9 +18,9 @@ const processListing = ['-A', '-o', 'pid=,ppid=,rss='];
       for (final field in line.trim().split(RegExp(r'\s+')))
         int.tryParse(field),
     ];
-    if (fields.length == 3 && !fields.contains(null)) {
+    if (fields.length == 3 && fields[0] != null && fields[1] != null) {
       children.putIfAbsent(fields[1]!, () => []).add(fields[0]!);
-      held[fields[0]!] = fields[2]!;
+      held[fields[0]!] = fields[2] ?? 0;
     }
   }
   // A set, walked while it grows: a process is in it once, whatever the
