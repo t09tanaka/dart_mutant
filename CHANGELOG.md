@@ -42,3 +42,14 @@
   system, so a killed run leaves none behind.
 - The results of a file are reused while the file, its tests and the test
   command are the same (`--force` runs everything).
+- `--shard <i>/<n>`: run part `i` of `n` of the mutants of each file (the
+  number of the mutant modulo `n`), for a run that is divided over the jobs
+  of a CI workflow. The report of a part lists every mutant, the ones of
+  the other parts as `Pending`, and says which part it is in `config.shard`.
+- `dart_mutant merge <part.json>... --report <path> [--html <path>]`: puts
+  the reports of the parts of one run together into the report the run
+  would have written without `--shard`. It fails, and writes nothing, when
+  a part is missing or given twice, or when the parts are not of the same
+  run: another number of parts, other files, sources or mutants, another
+  version of the tool or of its mutators, a file that could not be tested.
+- The report has `config.mutatorsVersion`.

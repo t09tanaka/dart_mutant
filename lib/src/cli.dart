@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'args.dart';
+import 'commands/merge.dart';
 import 'commands/run.dart';
 import 'output.dart';
 import 'version.dart';
@@ -19,6 +20,8 @@ Future<int> run(List<String> arguments, Io io) async {
         return 0;
       case RunCommandArgs(run: final args):
         return await runMutation(args, io);
+      case MergeCommandArgs(merge: final args):
+        return runMerge(args, io);
     }
   } on UsageError catch (error) {
     io.err('$executable: ${error.message}');

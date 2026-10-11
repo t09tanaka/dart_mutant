@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'json.dart';
 import 'mutant.dart';
 import 'plan.dart';
+import 'shard.dart';
 import 'typed_mutators.dart';
 import 'version.dart';
 
@@ -11,6 +12,11 @@ const killed = 'Killed';
 const survived = 'Survived';
 const timeout = 'Timeout';
 const compileError = 'CompileError';
+
+/// The status of a mutant that a run with `--shard` left to another part.
+/// The report schema has it for a mutant that is not evaluated yet; a
+/// report with such a mutant is not a result.
+const notRun = 'Pending';
 
 /// The limit of one test, passed to the test runner as `--timeout`. A test
 /// that waits for something a mutant no longer does then fails (Killed)
@@ -159,13 +165,20 @@ class FileRun {
 ///
 /// `thresholds` is required by the schema and only colours a viewer. This
 /// tool has no threshold: the exit code depends on the survivors alone.
+///
+/// With [shard] the report is a part of a run (see [reportConfig]), and
+/// [notTested] are the files of the run that are not in it because they
+/// could not be mutation tested.
 JsonObject buildReport(
   Map<String, FileRun> files, {
   JsonObject others = const {},
+  Shard? shard,
+  List<String> notTested = const [],
 }) => {
   'schemaVersion': '2',
   'thresholds': {'high': 100, 'low': 100},
   'framework': {'name': 'dart_mutant', 'version': packageVersion},
+  'config': reportConfig(shard: shard, notTested: notTested),
   'files': {
     ...others,
     for (final MapEntry(key: path, value: run) in files.entries)
@@ -209,7 +222,9 @@ bool isReport(String text) {
 /// What a run that is limited to the files [selected] keeps of the report
 /// that is already there ([existing], `null` when there is none): the other
 /// files, as they are written. Nothing is kept of a file that is not a
-/// report.
+/// report, and nothing of a part of a run with `--shard`: its mutants of
+/// the other parts are not evaluated, and in the report of a whole run
+/// nothing would say so.
 JsonObject otherReportFiles(String? existing, List<String> selected) {
   if (existing == null) {
     return {};
@@ -218,6 +233,9 @@ JsonObject otherReportFiles(String? existing, List<String> selected) {
   try {
     decoded = jsonDecode(existing);
   } on FormatException {
+    return {};
+  }
+  if (partOf(decoded) != null) {
     return {};
   }
   final files = asObject(asObject(decoded)?['files']) ?? {};
@@ -273,18 +291,6 @@ class FileInput {
   };
 }
 
-bool _sameJson(Object? a, Object? b) {
-  if (a is Map && b is Map) {
-    return a.length == b.length &&
-        a.keys.every((key) => b.containsKey(key) && _sameJson(a[key], b[key]));
-  }
-  if (a is List && b is List) {
-    return a.length == b.length &&
-        a.indexed.every((item) => _sameJson(item.$2, b[item.$1]));
-  }
-  return a == b;
-}
-
 /// What is kept of a file for [reusableResults] of a later run.
 JsonObject incrementalEntry(FileInput input, List<MutantResult> results) => {
   'input': input.toJson(),
@@ -306,7 +312,8 @@ JsonObject incrementalEntry(FileInput input, List<MutantResult> results) => {
 /// on something else.
 ///
 /// The status of a `Timeout` is given as `null`: it can come from the load
-/// of the machine, so it is measured again.
+/// of the machine, so it is measured again. So is the status of a mutant
+/// that run left to another part (`--shard`): it has none yet.
 List<({Mutant mutant, String? status, String? reason})>? reusableResults(
   Object? entry,
   FileInput input,
@@ -315,7 +322,7 @@ List<({Mutant mutant, String? status, String? reason})>? reusableResults(
   final mutants = object?['mutants'];
   if (object == null ||
       mutants is! List ||
-      !_sameJson(object['input'], input.toJson())) {
+      !sameJson(object['input'], input.toJson())) {
     return null;
   }
   final found = <({Mutant mutant, String? status, String? reason})>[];
@@ -340,7 +347,7 @@ List<({Mutant mutant, String? status, String? reason})>? reusableResults(
     }
     found.add((
       mutant: Mutant(mutator, offset, end, replacement),
-      status: status == timeout ? null : status,
+      status: status == timeout || status == notRun ? null : status,
       reason: reason as String?,
     ));
   }
@@ -353,7 +360,10 @@ String _counts(Iterable<FileRun> runs) {
   int sum(int Function(FileRun run) of) =>
       runs.fold(0, (total, run) => total + of(run));
   final refused = sum((run) => run.refusedBeforeRun);
-  return '${sum((run) => run.results.length)} mutants '
+  final all = sum((run) => run.results.length);
+  // Only in a part of a run with --shard.
+  final left = sum((run) => run.count(notRun));
+  return '${left == 0 ? '' : '${all - left} of '}$all mutants '
       '/ killed ${sum((run) => run.count(killed))} '
       '/ survived ${sum((run) => run.count(survived))} '
       '/ timeout ${sum((run) => run.count(timeout))} '
