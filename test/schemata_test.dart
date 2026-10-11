@@ -37,6 +37,16 @@ void main() {
       expect(fileObstacle("part 'b.dart';\nint a = 1;\n"), isNull);
     });
 
+    test('the name of the variable in a string or a comment is in '
+        'nobody\'s way, and a file that cannot be parsed is not asked', () {
+      expect(
+        fileObstacle('// \$dartMutantActive\nvar a = r"\$dartMutantActive";'),
+        isNull,
+      );
+      expect(fileObstacle('int a = ;'), isNull);
+      expect(fileObstacle(''), isNull);
+    });
+
     test('a byte order mark, the name of the variable, a part', () {
       expect(fileObstacle('﻿int a = 1;\n'), 'starts with a byte order mark');
       expect(
@@ -44,10 +54,21 @@ void main() {
         'has the name \$dartMutantActive in it',
       );
       expect(
+        fileObstacle('int f() => g(1, \$dartMutantActive);'),
+        'has the name \$dartMutantActive in it',
+      );
+      expect(
         fileObstacle("part of 'a.dart';\nint a = 1;\n"),
         'is a part of a library',
       );
     });
+  });
+
+  test('the reasons, and the longest alternative', () {
+    expect(runsOnce, 'in an initializer that runs once in a process');
+    expect(constantContext, 'in a constant');
+    expect(noPlace, 'no expression or statement around it can take it');
+    expect(longestAlternative, 4000);
   });
 
   group('placesOf', () {
@@ -178,6 +199,16 @@ void main() {
       expect(places(top, change(top, '+', '-')), [runsOnce]);
       const field = 'class A { static final x = 1 + 2; }';
       expect(places(field, change(field, '+', '-')), [runsOnce]);
+    });
+
+    test('what is in no function and in no variable does not run once', () {
+      // The default of a parameter. That it has to be a constant is for
+      // the analyzer to say.
+      const source = 'void f([int a = 1 + 2]) {}';
+      expect(places(source, change(source, '+', '-')), [
+        'expression: 1 + 2 → 1 - 2',
+        noPlace,
+      ]);
     });
 
     test('the initializer of a field of an object runs for each', () {
@@ -311,6 +342,17 @@ void main() {
       );
     });
 
+    test('a wrap that starts where another ends is next to it', () {
+      expect(
+        embed('f() { g();h(); }', [
+          const Wrap(1, 6, 10, ';', statement: true),
+          const Wrap(2, 10, 14, ';', statement: true),
+        ], declared: false),
+        'f() { { if (\$dartMutantActive == 1) { ; } else { g(); } }'
+        '{ if (\$dartMutantActive == 2) { ; } else { h(); } } }',
+      );
+    });
+
     test('a statement and an expression of the same text are two nodes, '
         'the statement outside', () {
       expect(
@@ -359,6 +401,22 @@ void main() {
         [2, 3, 6, 4, 5, 1],
       );
     });
+  });
+
+  test('inSourceOrderOf keeps the order of many wraps of one node', () {
+    final wraps = [
+      for (var id = 0; id < 100; id++)
+        Wrap(id * 37 % 100, 5, 9, '', statement: id.isEven),
+    ];
+    expect(
+      [for (final wrap in inSourceOrderOf(wraps)) wrap.id],
+      [
+        for (final wrap in wraps)
+          if (wrap.statement) wrap.id,
+        for (final wrap in wraps)
+          if (!wrap.statement) wrap.id,
+      ],
+    );
   });
 
   group('the types of a program', () {
@@ -434,6 +492,16 @@ void main() {
         (26, 29): 'num Function()',
         (41, 42): 'int',
       });
+    });
+
+    test('two nodes of one text have both their types', () async {
+      // The name of a generic function, and the function it is made into.
+      final found = await types(
+        'T same<T>(T a) => a; int Function(int) f() => same;',
+      );
+      expect(found.values.where((type) => type.contains(', ')), [
+        'int Function(int), T Function<T>(T)',
+      ]);
     });
 
     test('a mutant of the same type in a place where the type is given: '

@@ -26,10 +26,13 @@ String? fileObstacle(String source) {
   if (source.startsWith('\uFEFF')) {
     return 'starts with a byte order mark';
   }
-  if (source.contains(switchName)) {
-    return 'has the name $switchName in it';
-  }
   final unit = parseString(content: source, throwIfDiagnostics: false).unit;
+  // As a name: in a string or a comment it is in nobody's way.
+  for (var token = unit.beginToken; !token.isEof; token = token.next!) {
+    if (token.lexeme == switchName) {
+      return 'has the name $switchName in it';
+    }
+  }
   if (unit.directives.any((directive) => directive is PartOfDirective)) {
     // The driver imports the file to set the variable.
     return 'is a part of a library';
@@ -86,26 +89,32 @@ String embed(String source, List<Wrap> wraps, {bool declared = true}) {
     final sorted = inSourceOrderOf(inside);
     final out = StringBuffer();
     var at = from;
-    var index = 0;
-    while (index < sorted.length) {
-      final head = sorted[index];
-      final same = <Wrap>[];
-      final nested = <Wrap>[];
-      while (index < sorted.length && sorted[index].offset < head.end) {
-        final wrap = sorted[index++];
-        (wrap.offset == head.offset &&
-                    wrap.end == head.end &&
-                    wrap.statement == head.statement
-                ? same
-                : nested)
-            .add(wrap);
+    for (final head in sorted) {
+      if (head.offset < at) {
+        // In the node of a wrap before it, and built in with that one.
+        continue;
       }
+      bool together(Wrap wrap) =>
+          wrap.offset == head.offset &&
+          wrap.end == head.end &&
+          wrap.statement == head.statement;
       out
         ..write(source.substring(at, head.offset))
         ..write(head._open)
-        ..writeAll([for (final wrap in same) wrap._choice])
+        ..writeAll([
+          for (final wrap in sorted)
+            if (together(wrap)) wrap._choice,
+        ])
         ..write(head._open)
-        ..write(rewrite(head.offset, head.end, nested))
+        ..write(
+          rewrite(head.offset, head.end, [
+            for (final wrap in sorted)
+              if (wrap.offset >= head.offset &&
+                  wrap.end <= head.end &&
+                  !together(wrap))
+                wrap,
+          ]),
+        )
         ..write(head._close);
       at = head.end;
     }
@@ -171,16 +180,11 @@ class _Covering extends GeneralizingAstVisitor<void> {
 }
 
 /// The nodes of [unit] that hold the text from [from] to [to], the smallest
-/// first; of two of one length, the inner one.
+/// first.
 List<AstNode> _around(CompilationUnit unit, int from, int to) {
   final covering = _Covering(from, to);
   unit.accept(covering);
-  final indexed = covering.nodes.reversed.indexed.toList()
-    ..sort((a, b) {
-      final byLength = a.$2.length - b.$2.length;
-      return byLength != 0 ? byLength : a.$1 - b.$1;
-    });
-  return [for (final (_, node) in indexed) node];
+  return covering.nodes..sort((a, b) => a.length - b.length);
 }
 
 /// True for a statement that declares a name for the statements after it:
@@ -239,11 +243,9 @@ Places placesOf(
 ) {
   final growth = mutant.replacement.length - (mutant.end - mutant.offset);
   final after = {
-    for (final node in _around(
-      mutated,
-      mutant.offset,
-      mutant.offset + mutant.replacement.length,
-    ))
+    // A node that starts before the mutant and ends after it holds the
+    // place where the mutant starts.
+    for (final node in _around(mutated, mutant.offset, mutant.offset))
       (node.offset, node.end, node is Statement, node is Expression),
   };
   final wraps = <Wrap>[];

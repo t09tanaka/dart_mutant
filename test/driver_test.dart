@@ -136,6 +136,22 @@ void main() {
       );
     });
 
+    test('the first annotation of the first directive that has one is '
+        'named', () {
+      expect(
+        driverObstacle(
+          '@Tags(["a"]) @Skip()\nlibrary;\n@Timeout.none\n'
+          "import 'a.dart';\nvoid main() {}",
+        ),
+        'has an annotation on its library (@Tags(["a"]))',
+      );
+    });
+
+    test('a test file that cannot be parsed is judged by what is there', () {
+      expect(driverObstacle('void main() { test(; }'), isNull);
+      expect(driverObstacle('void other( {'), 'has no main()');
+    });
+
     test('an annotation on a declaration is none on the library', () {
       expect(driverObstacle('@pragma("x")\nvoid main() {}'), isNull);
     });
@@ -226,6 +242,11 @@ void main() {
       'test/x/dart_mutant_driver_test.dart',
     );
     expect(driverPathOf(['a_test.dart']), 'dart_mutant_driver_test.dart');
+    // The first one decides; the caller has seen to it that they agree.
+    expect(
+      driverPathOf(['a/x_test.dart', 'b/y_test.dart', 'z_test.dart']),
+      'a/dart_mutant_driver_test.dart',
+    );
   });
 
   test('driverCommand', () {
@@ -434,6 +455,14 @@ void main() {
       found.add(ended(1, 'error'));
       expect(found.loadFailed, isTrue);
       expect(found.failed, isEmpty);
+    });
+
+    test('a log starts at no time, and what is no event reports nothing', () {
+      final found = DriverLog([-1, 4, -1]);
+      expect(found.time, 0);
+      expect(found.add('Compiling...'), isNull);
+      expect(found.add('[1, 2]'), isNull);
+      expect(found.add('7'), isNull);
     });
 
     test('what is no event is passed over', () {

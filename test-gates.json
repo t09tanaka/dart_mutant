@@ -54,6 +54,16 @@
       "path": "lib/src/output.dart",
       "decides": "How much of the output of a failed test run is shown",
       "impact": "The lines that say why the tests fail without a mutant are cut off"
+    },
+    {
+      "path": "lib/src/schemata.dart",
+      "decides": "Where a mutant can be built into its file as a choice made while the program runs, what the file is with the choices in it, which mutants are left out (a constant, an initializer that runs once, a part), and whether a program has the static types of another outside a node",
+      "impact": "The program without a mutant at work is no longer the one that was there, or the one with a mutant at work is not that mutant, and a mutant is reported as killed by tests that would not have noticed it"
+    },
+    {
+      "path": "lib/src/driver.dart",
+      "decides": "The test file that runs the tests once per built-in mutant, its plan and its command, which test files it cannot call, which mutants its report shows as killed, which have to be run the usual way or by the next driver, and how long a mutant may take",
+      "impact": "A mutant is reported as killed although the tests no longer pass without a mutant in that process, a mutant that never ends holds the whole run, or the failure of one mutant is counted for another"
     }
   ],
   "candidates": [

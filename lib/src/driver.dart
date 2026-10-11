@@ -41,11 +41,13 @@ String importOf(String path, {required String directory, String? package}) {
   final from = directory.isEmpty ? const <String>[] : directory.split('/');
   final to = path.split('/');
   var shared = 0;
-  while (shared < from.length &&
-      shared < to.length - 1 &&
-      from[shared] == to[shared]) {
-    shared++;
-  }
+  for (
+    ;
+    shared < from.length &&
+        shared < to.length - 1 &&
+        from[shared] == to[shared];
+    shared++
+  ) {}
   return [
     for (var up = shared; up < from.length; up++) '..',
     ...to.skip(shared),
@@ -78,23 +80,19 @@ String? driverObstacle(String test) {
     return 'has an annotation on its library '
         '(${annotated.first.metadata.first.toSource()})';
   }
-  final mains = [
-    for (final declaration in unit.declarations)
-      if (declaration is FunctionDeclaration &&
-          declaration.name.lexeme == 'main')
-        declaration.functionExpression,
-  ];
-  if (mains.isEmpty) {
-    return 'has no main()';
+  for (final declaration in unit.declarations) {
+    if (declaration is FunctionDeclaration &&
+        declaration.name.lexeme == 'main') {
+      final main = declaration.functionExpression;
+      if (main.parameters?.parameters.isEmpty != true) {
+        return 'has a main() that takes arguments';
+      }
+      return main.body.isAsynchronous || main.body.isGenerator
+          ? 'has a main() that is async'
+          : null;
+    }
   }
-  final main = mains.first;
-  if (main.parameters?.parameters.isEmpty != true) {
-    return 'has a main() that takes arguments';
-  }
-  if (main.body.isAsynchronous || main.body.isGenerator) {
-    return 'has a main() that is async';
-  }
-  return null;
+  return 'has no main()';
 }
 
 /// Why the test files [tests] (path → source) cannot be run by one driver,
@@ -141,9 +139,12 @@ List<String> driverCommand(List<String> command, String driver) => [
 /// Flutter package ([flutter]), else of `test`. `null` when the package has
 /// neither.
 String? testLibraryOf(String? packageConfig, {required bool flutter}) {
+  if (packageConfig == null) {
+    return null;
+  }
   final Object? decoded;
   try {
-    decoded = jsonDecode(packageConfig ?? '');
+    decoded = jsonDecode(packageConfig);
   } on FormatException {
     return null;
   }
@@ -313,7 +314,7 @@ class DriverLog {
         final test = asObject(event['test']);
         final id = test?['id'];
         final name = test?['name'];
-        final match = _group.firstMatch(name is String ? name : '');
+        final match = name is String ? _group.firstMatch(name) : null;
         if (id is int && match != null) {
           final position = int.parse(match.group(1)!);
           if (position < plan.length &&

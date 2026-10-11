@@ -1,6 +1,7 @@
 // The mutation test of this package, by this package:
 //
 //   dart run tool/self_mutation.dart [--gate <path>]... [--force] [--jobs <n>]
+//       [--schemata | --no-schemata]
 //
 // 1. The gates of test-gates.json become a plan: each gate with its test.
 // 2. `dart_mutant run --plan` (the code of this checkout) mutates them and
@@ -41,14 +42,16 @@ Future<void> main(List<String> arguments) async {
     final argument = arguments[index];
     if (argument == '--gate' && index + 1 < arguments.length) {
       gates.add(arguments[++index]);
-    } else if (argument == '--force') {
+    } else if (argument == '--force' ||
+        argument == '--schemata' ||
+        argument == '--no-schemata') {
       passed.add(argument);
     } else if (argument == '--jobs' && index + 1 < arguments.length) {
       passed.addAll([argument, arguments[++index]]);
     } else {
       stderr.writeln(
         'usage: dart run tool/self_mutation.dart [--gate <path>]... '
-        '[--force] [--jobs <n>]',
+        '[--force] [--jobs <n>] [--schemata | --no-schemata]',
       );
       exitCode = 2;
       return;
