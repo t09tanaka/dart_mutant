@@ -67,7 +67,7 @@ final _compileError = RegExp(r'(\.dart:\d+:\d+: Error: |Compilation failed)');
 
 /// The status of a mutant from the test run on it.
 ///
-/// - the process limit was reached → `Timeout`
+/// - the process limit was reached, of time or of memory → `Timeout`
 /// - the tests passed → `Survived`
 /// - the code did not compile → `CompileError` (nothing was evaluated)
 /// - anything else → `Killed`
@@ -132,7 +132,8 @@ class MutantResult {
   final int milliseconds;
 
   /// For a `CompileError` that the analyzer found before a test was run:
-  /// its message. `null` for one that only showed in the test run.
+  /// its message. `null` for one that only showed in the test run. For a
+  /// `Timeout` of a test run that was ended for the memory it used: that.
   final String? reason;
 
   /// True when no test had to be run to know that this does not compile.
@@ -311,9 +312,10 @@ JsonObject incrementalEntry(FileInput input, List<MutantResult> results) => {
 /// made of exactly [input], with what it found, or `null` when that run was
 /// on something else.
 ///
-/// The status of a `Timeout` is given as `null`: it can come from the load
-/// of the machine, so it is measured again. So is the status of a mutant
-/// that run left to another part (`--shard`): it has none yet.
+/// The status of a `Timeout` is given as `null`, and so is its reason: it
+/// can come from the load of the machine, so it is measured again. So is
+/// the status of a mutant that run left to another part (`--shard`): it has
+/// none yet.
 List<({Mutant mutant, String? status, String? reason})>? reusableResults(
   Object? entry,
   FileInput input,
@@ -348,7 +350,8 @@ List<({Mutant mutant, String? status, String? reason})>? reusableResults(
     found.add((
       mutant: Mutant(mutator, offset, end, replacement),
       status: status == timeout || status == notRun ? null : status,
-      reason: reason as String?,
+      // Why a run was ended is true of that run only.
+      reason: status == timeout ? null : reason as String?,
     ));
   }
   return found;

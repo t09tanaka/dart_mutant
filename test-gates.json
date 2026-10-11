@@ -72,8 +72,13 @@
     },
     {
       "path": "lib/src/driver.dart",
-      "decides": "The test file that runs the tests once per built-in mutant, its plan and its command, which test files it cannot call, which mutants its report shows as killed, which have to be run the usual way or by the next driver, and how long a mutant may take",
+      "decides": "The test file that runs the tests once per built-in mutant, its plan and its command, which test files it cannot call, which mutants its report shows as killed, which have to be run the usual way or by the next driver, how long a mutant may take, and from when on how much memory",
       "impact": "A mutant is reported as killed although the tests no longer pass without a mutant in that process, a mutant that never ends holds the whole run, or the failure of one mutant is counted for another"
+    },
+    {
+      "path": "lib/src/memory.dart",
+      "decides": "Which processes belong to a test run and how much memory they hold together, how much a test run may hold after a run without a mutant, and what the report says of a run that was ended for it",
+      "impact": "A test run that takes memory without end is not ended before the machine has none left, a run is ended for the memory of processes that are not its own, or a limit below what the tests need turns mutants they would not have noticed into timeouts"
     }
   ],
   "candidates": [

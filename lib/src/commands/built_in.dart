@@ -141,6 +141,7 @@ class BuiltInRun {
     this.failure,
     this.aborted,
     this.unended = 0,
+    this.heavy = 0,
   });
 
   /// The mutants that are `Killed`, with the milliseconds of their tests.
@@ -155,6 +156,10 @@ class BuiltInRun {
   /// How many drivers were ended because a mutant did not end within its
   /// limit.
   final int unended;
+
+  /// How many drivers were ended because they held more memory than their
+  /// limit with a mutant at work.
+  final int heavy;
 }
 
 String _inPackage(String root, String relativePath) =>
@@ -171,7 +176,10 @@ const _tick = Duration(milliseconds: 200);
 /// Only `Killed` is taken from a driver, and only with the tests without a
 /// mutant passing before and after: see [DriverLog.result]. A driver whose
 /// current mutant does not end within its limit is ended, and another one
-/// is started for the mutants after it.
+/// is started for the mutants after it. So is a driver that holds more
+/// memory than its limit with a mutant at work
+/// ([DriverLog.memoryLimit]): that mutant is run the usual way, which
+/// measures it by itself.
 ///
 /// The copies are left as they were: the file as [original], no driver.
 Future<BuiltInRun> runBuiltIn({
@@ -186,6 +194,7 @@ Future<BuiltInRun> runBuiltIn({
   required String testLibrary,
   required String? package,
   required Duration Function(Duration baseline) limitOf,
+  required int Function(int baseline) memoryLimitOf,
   required SignalWatch signals,
 }) async {
   final directory = directoryOf(tests.first);
@@ -195,6 +204,7 @@ Future<BuiltInRun> runBuiltIn({
   String? failure;
   String? aborted;
   var unended = 0;
+  var heavy = 0;
 
   Future<void> worker(String copy, List<int> share) async {
     final state = Directory(p.join(copy, '.dart_tool', 'dart_mutant_driver'));
@@ -237,10 +247,23 @@ Future<BuiltInRun> runBuiltIn({
         final stop = Completer<void>();
         final watch = Stopwatch()..start();
         int? at;
-        final timer = Timer.periodic(_tick, (_) {
+        void readDeclared() {
           if (log.started.isEmpty && declared.existsSync()) {
             log.declared(declared.readAsStringSync());
           }
+        }
+
+        // The memory limit: of every position but the first, from what
+        // the first one held.
+        late final MemoryWatch memory;
+        memory = MemoryWatch(
+          limit: () {
+            readDeclared();
+            return log.memoryLimit(memory.peak, memoryLimitOf);
+          },
+        );
+        final timer = Timer.periodic(_tick, (_) {
+          readDeclared();
           final current = log.current;
           if (current != at) {
             at = current;
@@ -271,6 +294,7 @@ Future<BuiltInRun> runBuiltIn({
               }
             },
             stop: stop.future,
+            memory: memory,
           );
         } finally {
           running = false;
@@ -282,7 +306,7 @@ Future<BuiltInRun> runBuiltIn({
             aborted != null) {
           return;
         }
-        if (result.exitCode == null && !result.timedOut) {
+        if (result.exitCode == null && !result.limited) {
           aborted ??=
               'cannot start "${command.join(' ')}" (${result.startError})';
           return;
@@ -290,13 +314,17 @@ Future<BuiltInRun> runBuiltIn({
         if (log.started.isEmpty && declared.existsSync()) {
           log.declared(declared.readAsStringSync());
         }
-        if (result.timedOut) {
+        if (result.limited) {
           log.ended();
-          unended++;
+          result.overMemory ? heavy++ : unended++;
         }
         final found = log.result;
         if (found.failure != null) {
-          failure ??= found.failure;
+          failure ??=
+              result.overMemory && found.failure == notEndedWithoutMutant
+              ? 'the driver used too much memory while the tests ran '
+                    'without a mutant'
+              : found.failure;
           return;
         }
         killed.addAll(found.killed);
@@ -333,5 +361,6 @@ Future<BuiltInRun> runBuiltIn({
     failure: failure,
     aborted: aborted,
     unended: unended,
+    heavy: heavy,
   );
 }

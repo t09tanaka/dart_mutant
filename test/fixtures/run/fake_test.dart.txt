@@ -15,6 +15,14 @@
 //                                  ends; its pid is written to "started"
 //   // hang-once-if: a * 1         the same, but only for the first run that
 //                                  gets here (needs --shared)
+//   // grow-if: a * 1              with this text in the file the run takes
+//                                  more and more memory (up to 1.5 GB, so
+//                                  that a test that fails to end it does
+//                                  not take the machine with it), and then
+//                                  never ends; its pid is written as for
+//                                  hang-if, to "heavy" / "heavy.<pid>"
+//   // grow-once-if: a * 1         the same, but only for the first run that
+//                                  gets here (needs --shared)
 //   // fail-below: /work/          the run fails when it is started in a
 //                                  directory whose path contains this text
 //   // expect-in: lib/b.dart::b()  another file must contain this text
@@ -29,6 +37,7 @@
 // writes "started.<pid>": the runs of a parallel `dart_mutant run` are each
 // started in a copy of the package, at the same time.
 import 'dart:io';
+import 'dart:typed_data';
 
 Future<void> main(List<String> arguments) async {
   final shared = [
@@ -89,6 +98,31 @@ Future<void> main(List<String> arguments) async {
           File('$shared/started.$pid').writeAsStringSync('');
         }
         await Future<void>.delayed(const Duration(hours: 1));
+      }
+      var grow = value(rule, 'grow-if');
+      final growOnce = value(rule, 'grow-once-if');
+      if (growOnce != null && content.contains(growOnce)) {
+        try {
+          File('$shared/grown').createSync(exclusive: true);
+          grow = growOnce;
+        } on FileSystemException {
+          // Another run was the first.
+        }
+      }
+      if (grow != null && content.contains(grow)) {
+        if (shared == null) {
+          File('heavy').writeAsStringSync('$pid');
+        } else {
+          File('$shared/heavy.$pid').writeAsStringSync('');
+        }
+        final held = <Uint8List>[];
+        for (var chunk = 0; chunk < 96; chunk++) {
+          // Filled: memory that is only asked for is not held.
+          held.add(Uint8List(16 * 1024 * 1024)..fillRange(0, 16 * 1024 * 1024, 1));
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+        await Future<void>.delayed(const Duration(hours: 1));
+        stdout.writeln(held.length);
       }
       final broken = value(rule, 'compile-error-if');
       if (broken != null && content.contains(broken)) {

@@ -14,6 +14,7 @@ import '../io/process.dart';
 import '../io/report_files.dart';
 import '../io/work_copies.dart';
 import '../json.dart';
+import '../memory.dart';
 import '../mutant.dart';
 import '../mutation_run.dart';
 import '../output.dart';
@@ -341,6 +342,11 @@ class _Copies {
 /// A mutant that runs into the limit is run once more when the others are
 /// done, alone: only one that does not end then either is a `Timeout`.
 ///
+/// The same goes for memory: the run without a mutant that held the most
+/// gives the limit ([memoryLimitOf]), a test run that holds more is ended
+/// at once, and its mutant is run once more, alone. One that is ended then
+/// as well is a `Timeout`, and its entry of [reasons] says why.
+///
 /// Returns `aborted` when the whole run has to stop, and `inPlace` (why)
 /// when the tests do not pass in a copy: the file is then for the run in
 /// place, which says whether they pass in the package.
@@ -357,8 +363,10 @@ Future<({String? aborted, String? inPlace})> _runInCopies({
   required List<Mutant> mutants,
   required List<int> pending,
   required List<String?> statuses,
+  required List<String?> reasons,
   required List<int> milliseconds,
   required Duration Function(Duration baseline) limitOf,
+  required int Function(int baseline) memoryLimitOf,
   required SignalWatch signals,
   required Io io,
 }) async {
@@ -396,21 +404,24 @@ Future<({String? aborted, String? inPlace})> _runInCopies({
     for (final copy in used)
       () async {
         final watch = Stopwatch()..start();
+        final memory = MemoryWatch();
         final result = await runCommand(
           run,
           workingDirectory: copy,
           capture: true,
           signals: signals,
           timeout: baselineLimit,
+          memory: memory,
         );
-        return (result: result, elapsed: watch.elapsed);
+        return (result: result, elapsed: watch.elapsed, held: memory.peak);
       }(),
   ]);
   if (signals.signal != null) {
     return done;
   }
   var slowest = Duration.zero;
-  for (final (:result, :elapsed) in baselines) {
+  var most = 0;
+  for (final (:result, :elapsed, :held) in baselines) {
     if (result.exitCode == null && !result.timedOut) {
       return (
         aborted: 'cannot start "$shown" (${result.startError})',
@@ -429,11 +440,17 @@ Future<({String? aborted, String? inPlace})> _runInCopies({
     if (elapsed > slowest) {
       slowest = elapsed;
     }
+    if (held > most) {
+      most = held;
+    }
   }
   final limit = limitOf(slowest);
+  final memoryLimit = memoryLimitOf(most);
 
   String? aborted;
   final limited = <int>[];
+  // Those of them that were ended for the memory they held.
+  final heavy = <int>{};
 
   /// The test run on the mutant [index] in [copy]. `null` when the run was
   /// interrupted or the whole run has to stop.
@@ -453,6 +470,7 @@ Future<({String? aborted, String? inPlace})> _runInCopies({
           capture: true,
           signals: signals,
           timeout: limit,
+          memory: MemoryWatch(limit: () => memoryLimit),
         );
       } finally {
         // The next file of the run may import this one.
@@ -467,7 +485,7 @@ Future<({String? aborted, String? inPlace})> _runInCopies({
     if (result.signal != null || signals.signal != null) {
       return null;
     }
-    if (result.exitCode == null && !result.timedOut) {
+    if (result.exitCode == null && !result.limited) {
       aborted ??= 'cannot start "$shown" (${result.startError})';
       return null;
     }
@@ -483,8 +501,11 @@ Future<({String? aborted, String? inPlace})> _runInCopies({
       if (result == null) {
         return;
       }
-      if (result.timedOut) {
+      if (result.limited) {
         limited.add(index);
+        if (result.overMemory) {
+          heavy.add(index);
+        }
       } else {
         statuses[index] = classifyRun(
           exitCode: result.exitCode,
@@ -502,8 +523,10 @@ Future<({String? aborted, String? inPlace})> _runInCopies({
 
   // The limit was measured with the other runs going, but the load of the
   // machine is not ours alone. A mutant only is a Timeout when it does not
-  // end with the copies to itself either.
+  // end with the copies to itself either. One that held too much memory is
+  // treated the same way: a second measurement, not a verdict at the first.
   var confirmed = 0;
+  var confirmedHeavy = 0;
   for (final index in limited..sort()) {
     final result = await onMutant(index, used.first);
     if (result == null) {
@@ -512,17 +535,27 @@ Future<({String? aborted, String? inPlace})> _runInCopies({
     statuses[index] = classifyRun(
       exitCode: result.exitCode,
       output: result.output,
-      timedOut: result.timedOut,
+      timedOut: result.limited,
     );
-    if (result.timedOut) {
-      confirmed++;
+    if (result.overMemory) {
+      reasons[index] = overMemoryReason(memoryLimit);
+    }
+    if (result.limited) {
+      heavy.contains(index) ? confirmedHeavy++ : confirmed++;
     }
   }
-  if (limited.isNotEmpty) {
+  if (limited.length > heavy.length) {
     io.out(
-      '  $path: ${limited.length} mutant(s) did not end within '
-      '${limit.inSeconds}s and were run again alone: $confirmed did not '
-      'end then either (Timeout)',
+      '  $path: ${limited.length - heavy.length} mutant(s) did not end '
+      'within ${limit.inSeconds}s and were run again alone: $confirmed did '
+      'not end then either (Timeout)',
+    );
+  }
+  if (heavy.isNotEmpty) {
+    io.out(
+      '  $path: ${heavy.length} mutant(s) used more than '
+      '${megabytes(memoryLimit)} MB of memory, were ended and run again '
+      'alone: $confirmedHeavy reached a limit then as well (Timeout)',
     );
   }
   return done;
@@ -548,8 +581,10 @@ Future<({String? aborted, String? inPlace})> _runInCopies({
 /// an earlier run is not run again unless `--force` is given.
 ///
 /// [limitOf] gives the time the test run of one mutant may take, from the
-/// time of the run without a mutant. It is a parameter for the tests of
-/// this package only; the command line always uses [processLimit].
+/// time of the run without a mutant, and [memoryLimitOf] the memory it may
+/// hold, from what the run without a mutant held. They are parameters for
+/// the tests of this package only; the command line always uses
+/// [processLimit] and [memoryLimit].
 ///
 /// Returns the exit code: 0 when no mutant survived, 1 when one did or a
 /// file could not be mutation tested, 130 / 143 / 129 when interrupted.
@@ -558,6 +593,7 @@ Future<int> runMutation(
   RunArgs args,
   Io io, {
   Duration Function(Duration baseline) limitOf = processLimit,
+  int Function(int baseline) memoryLimitOf = memoryLimit,
 }) async {
   if (!Directory(args.root).existsSync()) {
     throw UsageError('--root ${args.root} is not a directory');
@@ -605,6 +641,7 @@ Future<int> runMutation(
       htmlPath: htmlPath,
       oldReport: oldReport,
       limitOf: limitOf,
+      memoryLimitOf: memoryLimitOf,
     );
   } finally {
     lock.release();
@@ -623,6 +660,7 @@ Future<int> _locked(
   required String? htmlPath,
   required String? oldReport,
   required Duration Function(Duration baseline) limitOf,
+  required int Function(int baseline) memoryLimitOf,
 }) async {
   // A report of an earlier run must not be read as the result of this one
   // if this one writes none. With --only that holds for the files of this
@@ -950,6 +988,7 @@ Future<int> _locked(
               testLibrary: testLibrary!,
               package: packageNameOf(pubspec),
               limitOf: limitOf,
+              memoryLimitOf: memoryLimitOf,
               signals: signals,
             );
             if (outcome.aborted != null) {
@@ -980,7 +1019,10 @@ Future<int> _locked(
                 '${unsettled == 0 ? '' : '; $unsettled not killed that way '
                           'are measured the usual way'}'
                 '${outcome.unended == 0 ? '' : '; ${outcome.unended} of '
-                          'them did not end, and the driver was ended'}',
+                          'them did not end, and the driver was ended'}'
+                '${outcome.heavy == 0 ? '' : '; with ${outcome.heavy} of '
+                          'them the driver used too much memory, and was '
+                          'ended'}',
               );
             }
             var left = [
@@ -1043,8 +1085,10 @@ Future<int> _locked(
             mutants: mutants,
             pending: pending,
             statuses: statuses,
+            reasons: reasons,
             milliseconds: milliseconds,
             limitOf: limitOf,
+            memoryLimitOf: memoryLimitOf,
             signals: signals,
             io: io,
           );
@@ -1093,12 +1137,14 @@ Future<int> _locked(
           );
         }
         final baselineWatch = Stopwatch()..start();
+        final baselineMemory = MemoryWatch();
         final baseline = await runCommand(
           run,
           workingDirectory: root,
           capture: true,
           signals: signals,
           timeout: baselineLimit,
+          memory: baselineMemory,
         );
         if (baseline.signal != null) {
           break;
@@ -1122,6 +1168,8 @@ Future<int> _locked(
           continue;
         }
         final limit = limitOf(baselineWatch.elapsed);
+        final memoryLimit = memoryLimitOf(baselineMemory.peak);
+        var heavy = 0;
 
         final active = _Active(
           path,
@@ -1159,6 +1207,7 @@ Future<int> _locked(
                 capture: true,
                 signals: signals,
                 timeout: limit,
+                memory: MemoryWatch(limit: () => memoryLimit),
               );
               final problem = _restore(active, state);
               if (problem != null) {
@@ -1168,15 +1217,19 @@ Future<int> _locked(
               if (result.signal != null || signals.signal != null) {
                 break;
               }
-              if (result.exitCode == null && !result.timedOut) {
+              if (result.exitCode == null && !result.limited) {
                 aborted = 'cannot start "$shown" (${result.startError})';
                 break;
               }
               statuses[index] = classifyRun(
                 exitCode: result.exitCode,
                 output: result.output,
-                timedOut: result.timedOut,
+                timedOut: result.limited,
               );
+              if (result.overMemory) {
+                reasons[index] = overMemoryReason(memoryLimit);
+                heavy++;
+              }
               milliseconds[index] = mutantWatch.elapsedMilliseconds;
             }
           } finally {
@@ -1194,6 +1247,12 @@ Future<int> _locked(
         }
         if (signals.signal != null || aborted != null) {
           break;
+        }
+        if (heavy > 0) {
+          io.out(
+            '  $path: $heavy mutant(s) used more than '
+            '${megabytes(memoryLimit)} MB of memory and were ended (Timeout)',
+          );
         }
       }
 

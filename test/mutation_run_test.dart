@@ -327,6 +327,18 @@ void main() {
       expect(reused(withTimeout, input), ['ArithmeticOperator null null']);
     });
 
+    test('why a run was ended is not kept with it: the next run says why, '
+        'if it is ended again', () {
+      final withReason = incrementalEntry(input, const [
+        MutantResult(plus, timeout, reason: 'the memory'),
+        MutantResult(one, notRun, reason: 'kept'),
+      ]);
+      expect(reused(jsonDecode(jsonEncode(withReason)), input), [
+        'ArithmeticOperator null null',
+        'NumberLiteral null kept',
+      ]);
+    });
+
     test('a mutant that was left to another part has no status yet', () {
       final part = incrementalEntry(input, const [
         MutantResult(plus, notRun),

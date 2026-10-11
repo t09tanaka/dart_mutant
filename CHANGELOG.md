@@ -34,6 +34,16 @@
   dependency outside the package, a package inside it that is named by an
   absolute path, a file behind a symbolic link, tests that only pass in the
   package itself) is run in place, and a line says why.
+- A memory limit for the test run of a mutant: twice the most the run
+  without a mutant held (the test command and the processes that descend
+  from it, as `ps` reports them ten times a second), plus 1 GB. A test run
+  that holds more is killed at once with what it started, instead of taking
+  the memory of the machine before its time limit ends it. Its mutant is run
+  again alone with more than one job, and is a `Timeout` (with the reason as
+  `statusReason`) when a limit ends that run as well; with `--schemata` the
+  driver is ended and the mutant is run the usual way. Not a setting. Not on
+  Windows or where there is no `ps`, and a measurement, not a wall: see
+  "Memory limit" in the README.
 - With `--jobs 1` the files are mutated in place and put back after every
   mutant, on an error, and on SIGINT / SIGTERM / SIGHUP; what a killed run
   leaves behind is put back by the next run.

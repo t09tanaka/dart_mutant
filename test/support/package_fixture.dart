@@ -77,6 +77,10 @@ class PackageFixture {
   /// The process ids of the runs of [sharedFake] that hung.
   List<String> get sharedHung => _sharedFiles('started.');
 
+  /// The process ids of the runs of [sharedFake] that took more and more
+  /// memory.
+  List<String> get sharedHeavy => _sharedFiles('heavy.');
+
   /// Forgets the runs of [sharedFake] so far.
   void clearShared() {
     for (final entity in shared.listSync()) {

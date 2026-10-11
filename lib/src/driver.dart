@@ -245,6 +245,10 @@ List<int> planOf(List<int> ids) => [
   ],
 ];
 
+/// Why nothing of a driver is used when it was ended while the tests ran
+/// without a mutant.
+const notEndedWithoutMutant = 'the tests did not end without a mutant';
+
 final _group = RegExp('^$_marker#(\\d+)#(-?\\d+)(?: |\$)');
 
 /// What a driver has reported so far: the lines of the JSON reporter of the
@@ -393,6 +397,24 @@ class DriverLog {
         : limitOf(Duration(milliseconds: millisecondsOf(0)));
   }
 
+  var _memoryWithoutMutant = 0;
+
+  /// How much memory the driver may hold now, in kilobytes, when the most
+  /// it has held so far is [peak], or `null` for as much as it takes.
+  ///
+  /// While the first position is at work (the tests without a mutant are
+  /// declared, or run, for the first time, and before that the compiler is
+  /// at work) there is no limit, and [peak] is what a run without a mutant
+  /// takes. Every later position gets what [limitOf] makes of that.
+  int? memoryLimit(int peak, int Function(int baseline) limitOf) {
+    final at = current;
+    if (at == null || at == 0) {
+      _memoryWithoutMutant = peak;
+      return null;
+    }
+    return limitOf(_memoryWithoutMutant);
+  }
+
   /// Takes it that the driver was ended before it had run everything: a
   /// test runner that is told to end still says that it is done.
   void ended() {
@@ -455,9 +477,7 @@ class DriverLog {
       );
     }
     if (plan[reached] == noMutant) {
-      return const DriverResult(
-        failure: 'the tests did not end without a mutant',
-      );
+      return const DriverResult(failure: notEndedWithoutMutant);
     }
     final ran = {for (final position in open) plan[position]};
     return DriverResult(

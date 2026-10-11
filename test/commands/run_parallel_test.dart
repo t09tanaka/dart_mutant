@@ -231,6 +231,84 @@ void main() {
     expect(statuses('lib/b.dart'), ['Killed', 'Killed']);
   });
 
+  group('memory limit', () {
+    Future<int> heavy(int jobs) => runMutation(
+      RunArgs(
+        root: package.path,
+        targets: const ['lib/b.dart'],
+        command: package.sharedFake,
+        jobs: jobs,
+        force: true,
+      ),
+      package.io,
+      // Not what ends a run in these tests.
+      limitOf: (_) => const Duration(seconds: 40),
+      memoryLimitOf: (_) => 200 * 1024,
+    );
+
+    List<Object?> reasons() => [
+      for (final mutant
+          in (((report() as Map)['files'] as Map)['lib/b.dart']
+                  as Map)['mutants']
+              as List)
+        (mutant as Map)['statusReason'],
+    ];
+
+    setUp(() => package.write('lib/b.dart', sourceB));
+
+    test(
+      'a mutant that takes more memory than the limit is ended, run '
+      'again alone, and is a Timeout when it is ended then as well',
+      () async {
+        package.fakeTest('lib/b.dart', ['grow-if: x / y', 'expect: x * y - x']);
+        final watch = Stopwatch()..start();
+        expect(await heavy(2), 0);
+        expect(watch.elapsed, lessThan(const Duration(seconds: 30)));
+        expect(package.out, [
+          startsWith('  lib/b.dart: 2 of 2 mutant(s) with '),
+          '  lib/b.dart: 1 mutant(s) used more than 200 MB of memory, were '
+              'ended and run again alone: 1 reached a limit then as well '
+              '(Timeout)',
+          startsWith(
+            '  lib/b.dart: 2 mutants / killed 1 / survived 0 / timeout 1 '
+            '/ compile error 0 (',
+          ),
+          'dart_mutant: OK (2 mutants / killed 1 / survived 0 / timeout 1 / '
+              'compile error 0)',
+        ]);
+        expect(statuses('lib/b.dart'), ['Timeout', 'Killed']);
+        expect(reasons(), [
+          'the test run used more than 200 MB of memory and was ended',
+          null,
+        ]);
+        // Two runs without a mutant, two mutants, and one of them again.
+        expect(package.sharedRuns, hasLength(5));
+        // Both runs that took the memory were ended.
+        final ended = package.sharedHeavy;
+        expect(ended, hasLength(2));
+        for (final pid in ended) {
+          expect(Process.runSync('kill', ['-0', pid]).exitCode, isNot(0));
+        }
+        expectPackageUntouched();
+      },
+      testOn: '!windows',
+    );
+
+    test('a mutant that only took that much once is not a Timeout: the '
+        'second run decides, and a survivor it finds fails the run', () async {
+      package.fakeTest('lib/b.dart', ['grow-once-if: x / y', 'expect: y - x']);
+      expect(await heavy(2), 1);
+      expect(
+        package.out[1],
+        '  lib/b.dart: 1 mutant(s) used more than 200 MB of memory, were '
+        'ended and run again alone: 0 reached a limit then as well (Timeout)',
+      );
+      expect(statuses('lib/b.dart'), ['Survived', 'Killed']);
+      expect(reasons(), [null, null]);
+      expect(package.sharedRuns, hasLength(5));
+    }, testOn: '!windows');
+  });
+
   group('time limit', () {
     Future<int> quick(int jobs) => runMutation(
       RunArgs(

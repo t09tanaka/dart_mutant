@@ -10,6 +10,7 @@ import 'package:dart_mutant/dart_mutant.dart';
 import 'package:dart_mutant/src/args.dart';
 import 'package:dart_mutant/src/commands/merge.dart';
 import 'package:dart_mutant/src/commands/run.dart';
+import 'package:dart_mutant/src/memory.dart';
 import 'package:dart_mutant/src/mutation_run.dart';
 import 'package:dart_mutant/src/shard.dart';
 import 'package:test/test.dart';
@@ -34,6 +35,36 @@ import 'package:test/test.dart';
 void main() {
   test('nothing below one but zero', () => expect(sumTo(1), 0));
   test('the numbers below four', () => expect(sumTo(4), 6));
+}
+''';
+
+// A loop that holds more with every round: `i++` → `i--` goes on until the
+// machine has no memory left. Not here: it stops by itself at 1.2 GB, and
+// the test then fails.
+const hold = '''
+import 'dart:typed_data';
+
+Future<List<Uint8List>> blocks(int count) async {
+  final held = <Uint8List>[];
+  for (var i = 0; i < count; i++) {
+    if (held.length == 150) {
+      break;
+    }
+    held.add(Uint8List(8388608)..fillRange(0, 8388608, 1));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  return held;
+}
+''';
+
+const holdTest = '''
+import 'package:built_in_fixture/hold.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('as many blocks as asked for', () async {
+    expect(await blocks(3), hasLength(3));
+  });
 }
 ''';
 
@@ -205,6 +236,8 @@ dev_dependencies:
 ''');
     write('lib/sum.dart', sum);
     write('test/sum_test.dart', sumTest);
+    write('lib/hold.dart', hold);
+    write('test/hold_test.dart', holdTest);
     write('lib/next.dart', next);
     write('test/next_test.dart', nextTest);
     write('lib/sign.dart', sign);
@@ -270,6 +303,7 @@ dev_dependencies:
     int jobs = 2,
     bool force = true,
     Duration Function(Duration baseline)? limit,
+    int Function(int baseline)? memory,
     Shard? shard,
     String? reportPath,
     String? plan,
@@ -289,6 +323,7 @@ dev_dependencies:
       ),
       Io(out: out.add, err: err.add),
       limitOf: limit ?? processLimit,
+      memoryLimitOf: memory ?? memoryLimit,
     );
     expect(tree(), before, reason: 'the package was changed');
     expect(Directory('${dir.path}/$stateDir/work').existsSync(), isFalse);
@@ -361,6 +396,61 @@ dev_dependencies:
     );
     expect(err.where((line) => !line.contains('FAILED')), isEmpty);
   });
+
+  test('a mutant that takes more and more memory does not take the machine: '
+      'the driver is ended, the mutant is measured the usual way, where it '
+      'is ended as well, and another driver runs the rest', () async {
+    // Whatever a run without a mutant holds on this machine, and 400 MB:
+    // the loop that never stops holding is over that within a second.
+    final builtIn = await mutate(
+      'lib/hold.dart',
+      schemata: true,
+      memory: (baseline) => baseline + 400 * 1024,
+    );
+    expect(builtIn.where((mutant) => !mutant.contains('NumberLiteral')), [
+      'ConditionalExpression false: Killed',
+      'EqualityOperator <=: Killed',
+      'EqualityOperator >=: Killed',
+      'UpdateOperator --: Timeout',
+      'BlockStatement {}: Killed',
+      'ConditionalExpression true: Killed',
+      // The loop is over before it holds that much.
+      'ConditionalExpression false: Survived',
+      'EqualityOperator !=: Killed',
+      'BlockStatement {}: Survived',
+      'RemoveCall ;: Killed',
+    ]);
+    expect(builtIn.where((mutant) => mutant.endsWith('Timeout')), hasLength(1));
+    final report = File(
+      '${dir.path}/reports/mutation/mutation.json',
+    ).readAsStringSync();
+    expect(
+      RegExp(
+        r'"status":\s*"Timeout",\s*"statusReason":\s*"the test run used more than '
+        r'\d+ MB of memory and was ended"',
+      ).allMatches(report),
+      hasLength(1),
+    );
+    expect(RegExp('"statusReason"').allMatches(report), hasLength(1));
+    expect(
+      builtInLine('lib/hold.dart'),
+      matches(
+        r'^  lib/hold\.dart: \d+ killed with the mutants built in; \d+ not '
+        r'killed that way are measured the usual way; with 1 of them the '
+        r'driver used too much memory, and was ended$',
+      ),
+    );
+    expect(
+      out,
+      contains(
+        matches(
+          r'^  lib/hold\.dart: 1 mutant\(s\) used more than \d+ MB of '
+          r'memory, were ended and run again alone: 1 reached a limit then '
+          r'as well \(Timeout\)$',
+        ),
+      ),
+    );
+  }, testOn: '!windows');
 
   test('tests that pass only once in a process: nothing of the driver is '
       'used', () async {
