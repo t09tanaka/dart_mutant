@@ -267,6 +267,9 @@ class DriverLog {
   /// The positions with a test that failed.
   final failed = <int>{};
 
+  /// How many tests of each position have passed.
+  final passed = <int, int>{};
+
   /// True when the test runner said it has run everything.
   var done = false;
 
@@ -325,10 +328,13 @@ class DriverLog {
           }
         }
       case 'testDone':
+        final position = _positionOfTest[event['testID']];
         if (event['result'] == 'success') {
+          if (position != null) {
+            passed.update(position, (count) => count + 1, ifAbsent: () => 1);
+          }
           return null;
         }
-        final position = _positionOfTest[event['testID']];
         if (position == null) {
           // The test that loads the file, or one outside every group.
           loadFailed = true;
@@ -339,7 +345,8 @@ class DriverLog {
           failedWithoutMutant ??= _nameOfTest[event['testID']];
         }
       case 'done':
-        done = true;
+        // A test runner that is told to end says so without a verdict.
+        done = event['success'] != null;
     }
     return null;
   }
@@ -417,7 +424,9 @@ class DriverLog {
       }
       if (id != noMutant) {
         open.add(position);
-      } else if (!started.containsKey(position) || failed.contains(position)) {
+      } else if (failed.contains(position) || passed[position] != passed[0]) {
+        // A test failed, or other tests were run than the first time: not
+        // all of them, or none.
         return DriverResult(
           failure:
               'the tests do not pass without a mutant when they are run '

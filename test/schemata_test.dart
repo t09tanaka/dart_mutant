@@ -557,6 +557,37 @@ void main() {
       ));
     });
 
+    test(
+      'a member of an extension is noted with its extension: the '
+      'choice between an int and a double takes it from another one',
+      () async {
+        const source = '''
+extension A on int { String get label => 'int'; }
+extension B on num { String get label => 'num'; }
+extension on List<int> { int operator -() => 0; int operator +(int a) => a; }
+extension C on Set<int> { int operator [](int a) => a; int operator ~() => 1; }
+String f(int a, int b) => (a * b).label;
+int g(List<int> a, Set<int> b) => -a + (a + 1) + b[2] + ~b;
+class P {}
+extension D on P { P operator +(int a) => this; }
+void h(P p) { p++; }
+''';
+        final found = (await types(source)).values.toSet();
+        expect(
+          found,
+          containsAll([
+            'String of A in package:fixture/a.dart',
+            'int of  in package:fixture/a.dart',
+            'int of C in package:fixture/a.dart',
+            'P of D in package:fixture/a.dart',
+          ]),
+        );
+        expect(found.where((type) => type.contains(' of B ')), isEmpty);
+        // A String either way, from another extension.
+        expect(await same(source, 'a * b', 'a / b'), (false, false));
+      },
+    );
+
     test('the node itself is compared where it is in the choice', () async {
       // The list has no type of its own: it takes the one that is asked
       // for, which the choice asks for as well.

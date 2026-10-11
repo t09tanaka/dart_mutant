@@ -251,7 +251,7 @@ The copies are inside `.dart_tool`, so the analyzer of your editor, `dart analyz
 ```
 $ dart_mutant run --schemata lib/discount.dart
   lib/discount.dart: 18 of 22 mutant(s) built into one program, with "dart test --timeout 10s --reporter json test/dart_mutant_driver_test.dart" (4 do not compile)
-  lib/discount.dart: 16 killed with the mutants built in; 2 not killed that way are measured one at a time
+  lib/discount.dart: 16 killed with the mutants built in; 2 not killed that way are measured the usual way
   lib/discount.dart: 2 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 2 at a time
   lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (8.6s)
 Survived:
@@ -276,7 +276,7 @@ The smallest expression or statement around a mutant becomes a choice between th
 
 ### The driver
 
-The tests are run by a test file that is written next to the tests of the file, **in a working copy** (your files are not written, with any number of jobs): `dart_mutant_driver_test.dart`. It reads a plan, and for every entry it sets the variable, calls `main()` of each test file inside a group of its own, and sets the variable back. The mutant is at work while the tests are declared as well, as it would be in a run of its own: tests that are generated from the code under test are generated from the mutant.
+The tests are run by a test file that is written next to the tests of the file, **in a working copy** (with any number of jobs; your files are only written for a file that cannot be run from a copy at all, as with `--jobs`): `dart_mutant_driver_test.dart`. It reads a plan, and for every entry it sets the variable, calls `main()` of each test file inside a group of its own, and sets the variable back. The mutant is at work while the tests are declared as well, as it would be in a run of its own: tests that are generated from the code under test are generated from the mutant.
 
 The plan starts with the tests **without a mutant**, repeats them after every 25 mutants, and ends with them. The driver is run with the test command, `--timeout 10s --reporter json`, and the tool reads the result of every test as it comes.
 
@@ -289,12 +289,13 @@ The plan starts with the tests **without a mutant**, repeats them after every 25
 | Its tests did not end | The limit is that of a run of its own (three times the first run of the tests without a mutant, plus 20 seconds). The driver is ended with the processes it started, the mutant is run the usual way, which decides whether it is a `Timeout`, and another driver is started for the mutants after it. The mutants since the tests last passed without a mutant are run the usual way as well |
 | The tests fail without a mutant: at the start (they cannot be run this way), or later (a mutant left something behind in the process) | Nothing the drivers of that file reported is used. Every mutant of the file is run the usual way, and a line says which test failed |
 | The driver cannot be loaded (a mutant breaks another file, say) | The same |
+| Every mutant of the file is killed in the driver | The tests are run once the usual way, without a mutant, before that is believed: test files that only pass together in one process pass in the driver, and are no tests to judge a mutant by |
 
 ### What cannot be built in
 
 Run the usual way, and counted in the line of the file (`12 cannot be built in (…)`):
 
-- **A constant.** The element of a `const` list, map, set or record, the default of a parameter, the argument of a `const` constructor, a `case` of a `switch`, a value of an `enum`: a choice made while the program runs is no constant. Where a statement around the constant can take the choice it does (`return const [1, 2];`); in a top-level `const` nothing can.
+- **A constant.** The element of a `const` list, map, set or record, the default of a parameter, the argument of a `const` constructor, a `case` of a `switch`, a value of an `enum`: a choice made while the program runs is no constant. (Some of them are counted under the next reason, or as "does not compile with a choice there": the line gives the reason as the tool found it.) Where a statement around the constant can take the choice it does (`return const [1, 2];`); in a top-level `const` nothing can.
 - **An initializer that runs once in a process**: of a top-level variable or a `static` field, outside every function in it. It runs when the variable is first read, with the mutant that is at work then, and never again.
 - A place where every choice changes the program (see above) and no statement around it is small enough.
 - A whole file: a `part of` file (the driver has to import the file to set the variable), a file that starts with a byte order mark, a file that uses the name `$dartMutantActive`.
@@ -306,13 +307,14 @@ In what was measured, between none and a third of the mutants of a file that com
 
 ### With `--jobs`
 
-The drivers run in the working copies of `--jobs`: when a file has more than 25 mutants to build in, they are shared out between up to as many drivers as there are jobs, each in its copy. What is left for the usual way is then run in the same copies, as many at a time as there are jobs. `--jobs 1 --schemata` uses one copy and still writes nothing to your files; a file that cannot be put into a copy (behind a symbolic link) is run in place, without the option.
+The drivers run in the working copies of `--jobs`: when a file has more than 25 mutants to build in, they are shared out between up to as many drivers as there are jobs, each in its copy. What is left for the usual way is then run in the same copies, as many at a time as there are jobs. `--jobs 1 --schemata` uses one copy and writes nothing to your files; a file that cannot be run from a copy (behind a symbolic link, or with tests that fail there) is run in place, as with `--jobs`.
 
 `--plan`, `--only`, `--force`, `--report`, `--html`, `--shard`, the results of the last run and the lock mean what they mean without the option. A part of a run (`--shard`) builds in the mutants of that part only, and the parts are put together by `merge` as always. The results of the last run do not say which way they were measured, and are reused either way.
 
 ### What can still go wrong
 
-- **A mutant can leave something behind that fails the tests of a later mutant and is gone again before the tests are next run without a mutant.** That later mutant is then reported as `Killed` although its own run would have let it survive. The checks every 25 mutants find what stays; they cannot find what goes away by itself. It did not happen in what was measured. It is the reason this is an option and not the default: a survivor that is reported as killed is the one mistake this tool must not make.
+- **A mutant can leave something behind in the process that fails the tests of a later mutant, and that the tests without a mutant do not see.** That later mutant is then reported as `Killed` although its own run would have let it survive. The checks every 25 mutants find what stays and what the tests without a mutant come across. They cannot find what is gone again by then, and they cannot find what only code that a mutant reaches ever reads: a `static final` that is first read with a mutant at work keeps the value that mutant gave it, and the next mutant that gets there reads it. It did not happen in what was measured (see [How long it takes](#how-long-it-takes)). It is the reason this is an option and not the default: a survivor that is reported as killed is the one mistake this tool must not make.
+- **The choices are checked one by one.** That the program keeps its static types is asked of every choice alone; of all choices of a file together only that they compile.
 - **All test files of a file share one process and one isolate**, one after the other, where the test runner gives each a process of its own. Test files that only pass alone fail the first run without a mutant, and the file is run the usual way.
 - **Configuration that is tied to the path of a test file** (`dart_test.yaml` with settings for single paths) does not reach the driver.
 - **Code that runs in another isolate** does not see the variable. Its mutants are not killed in the driver and are run the usual way.

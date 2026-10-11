@@ -920,15 +920,6 @@ Future<int> _locked(
             copies.jobs,
             (built.ids.length / mutantsBetweenChecks).ceil(),
           );
-          io.out(
-            '  $path: ${built.ids.length} of ${mutants.length} mutant(s) '
-            'built into one program, with '
-            '"${driverCommand(command, driverPathOf(target.tests)).join(' ')}"'
-            '${drivers == 1 ? '' : ', $drivers at a time'}'
-            '${said ? '' : ' ($refused do not compile)'}',
-          );
-          said = true;
-          announced = true;
           List<String>? used;
           try {
             used = copies.first(drivers);
@@ -936,6 +927,15 @@ Future<int> _locked(
             // The run from working copies below says so.
           }
           if (used != null) {
+            io.out(
+              '  $path: ${built.ids.length} of ${mutants.length} mutant(s) '
+              'built into one program, with '
+              '"${driverCommand(command, driverPathOf(target.tests)).join(' ')}"'
+              '${drivers == 1 ? '' : ', $drivers at a time'}'
+              '${said ? '' : ' ($refused do not compile)'}',
+            );
+            said = true;
+            announced = true;
             final outcome = await runBuiltIn(
               copies: used,
               root: root,
@@ -959,7 +959,7 @@ Future<int> _locked(
             if (outcome.failure != null) {
               io.err(
                 '$executable: $path: ${outcome.failure}; its mutants are '
-                'run one at a time',
+                'run the usual way',
               );
             } else {
               for (final MapEntry(key: id, value: took)
@@ -975,15 +975,43 @@ Future<int> _locked(
                 '${left == 0 ? '' : '; $left cannot be built in '
                           '(${built.reasons})'}'
                 '${unsettled == 0 ? '' : '; $unsettled not killed that way '
-                          'are measured one at a time'}'
+                          'are measured the usual way'}'
                 '${outcome.unended == 0 ? '' : '; ${outcome.unended} of '
                           'them did not end, and the driver was ended'}',
               );
             }
-            pending = [
+            var left = [
               for (final index in pending)
                 if (statuses[index] == null) index,
             ];
+            if (left.isEmpty) {
+              // No mutant is left for a run of its own, so the tests have
+              // not been run the usual way at all: once, without a mutant.
+              // Test files that only pass in one process together pass in
+              // the driver, and are no tests to judge a mutant by.
+              final usual = await runCommand(
+                mutantCommand(command, target.tests),
+                workingDirectory: used.first,
+                capture: true,
+                signals: signals,
+                timeout: baselineLimit,
+              );
+              if (signals.signal != null) {
+                break;
+              }
+              if (usual.exitCode != 0) {
+                for (final id in outcome.killed.keys) {
+                  statuses[id] = null;
+                  milliseconds[id] = 0;
+                }
+                left = pending;
+                io.err(
+                  '$executable: $path: the tests do not pass the usual way '
+                  'in a working copy; nothing of the driver is used',
+                );
+              }
+            }
+            pending = left;
             remaining = pending;
           }
         }

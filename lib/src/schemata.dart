@@ -1,6 +1,7 @@
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:analyzer/dart/element/element.dart';
 
 import 'mutant.dart';
 
@@ -303,10 +304,24 @@ class _Types extends GeneralizingAstVisitor<void> {
 
   @override
   void visitExpression(Expression node) {
+    // What a name or an operator stands for is decided by the type of the
+    // receiver at run time, except for a member of an extension: that one
+    // is chosen by the static type, and two extensions can give the same
+    // type.
+    final element = switch (node) {
+      SimpleIdentifier() => node.element,
+      BinaryExpression() => node.element,
+      IndexExpression() => node.element,
+      PrefixExpression() => node.element,
+      PostfixExpression() => node.element,
+      _ => null,
+    };
+    final extension = element?.enclosingElement;
     _note(
       node,
       '${node.staticType}'
-      '${node is InvocationExpression ? ' by ${node.staticInvokeType}' : ''}',
+      '${node is InvocationExpression ? ' by ${node.staticInvokeType}' : ''}'
+      '${extension is ExtensionElement ? ' of ${extension.displayName} in ${extension.library.uri}' : ''}',
     );
     super.visitExpression(node);
   }
@@ -319,7 +334,8 @@ class _Types extends GeneralizingAstVisitor<void> {
 }
 
 /// The static types of a resolved [unit], by place: of every expression,
-/// with the function type a call is made by, and of every variable.
+/// with the function type a call is made by and the extension a member is
+/// taken from, and of every variable.
 ///
 /// Two programs with the same types at the same places are compiled to the
 /// same calls, the same inferred type arguments and the same promotions.

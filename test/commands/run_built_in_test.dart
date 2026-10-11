@@ -143,6 +143,37 @@ void main() {
 }
 ''';
 
+// Two test files, of which the second only passes after the first, in the
+// same process.
+const pair = '''
+bool? ready;
+int half(int n) => n ~/ 2;
+''';
+
+const pairFirstTest = '''
+import 'package:built_in_fixture/pair.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('half', () {
+    ready = true;
+    expect(half(4), 2);
+  });
+}
+''';
+
+const pairSecondTest = '''
+import 'package:built_in_fixture/pair.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('after the other file', () {
+    expect(ready, isTrue);
+    expect(half(8), 4);
+  });
+}
+''';
+
 /// `dart_mutant run --schemata` against the real test runner, on a package
 /// in a temporary directory. The statuses are those of a run without the
 /// option.
@@ -183,6 +214,24 @@ dev_dependencies:
     write('test/twice_test.dart', twiceTest);
     write('lib/cases.dart', cases);
     write('test/cases_test.dart', casesTest);
+    write('lib/pair.dart', pair);
+    write('test/pair_first_test.dart', pairFirstTest);
+    write('test/pair_second_test.dart', pairSecondTest);
+    write(
+      'pair.json',
+      jsonEncode({
+        'version': 1,
+        'targets': [
+          {
+            'file': 'lib/pair.dart',
+            'tests': [
+              'test/pair_first_test.dart',
+              'test/pair_second_test.dart',
+            ],
+          },
+        ],
+      }),
+    );
     write('lib/square.dart', square);
     write('test/square_test.dart', squareTest);
     // The packages are in the cache: this package depends on `test` too.
@@ -222,12 +271,14 @@ dev_dependencies:
     Duration? limit,
     Shard? shard,
     String? reportPath,
+    String? plan,
   }) async {
     final before = tree();
     await runMutation(
       RunArgs(
         root: dir.path,
-        targets: [file],
+        targets: plan == null ? [file] : const [],
+        plan: plan,
         force: force,
         jobs: jobs,
         schemata: schemata,
@@ -250,9 +301,10 @@ dev_dependencies:
             )
             as Map<String, Object?>;
     final mutants =
-        ((report['files']! as Map<String, Object?>)[file]!
-                as Map<String, Object?>)['mutants']!
-            as List;
+        ((report['files']! as Map<String, Object?>)[file]
+                as Map<String, Object?>?)?['mutants']
+            as List? ??
+        const [];
     final found = [
       for (final mutant in mutants.cast<Map<String, Object?>>())
         '${mutant['mutatorName']} '
@@ -300,7 +352,7 @@ dev_dependencies:
       builtInLine('lib/sum.dart'),
       matches(
         r'^  lib/sum\.dart: \d+ killed with the mutants built in; \d+ not '
-        r'killed that way are measured one at a time; 1 of them did not '
+        r'killed that way are measured the usual way; 1 of them did not '
         r'end, and the driver was ended$',
       ),
     );
@@ -320,7 +372,7 @@ dev_dependencies:
       contains(
         'dart_mutant: lib/next.dart: the tests do not pass without a mutant '
         'when they are run more than once in one process ("the first run '
-        'in a process" fails); its mutants are run one at a time',
+        'in a process" fails); its mutants are run the usual way',
       ),
     );
     expect(builtInLine('lib/next.dart'), isEmpty);
@@ -375,8 +427,9 @@ dev_dependencies:
     );
     expect(killed, 8);
     final measuredAgain = builtIn.length - killed;
-    // The tests without a mutant twice, and all of them once more for
-    // every mutant that is measured again the usual way. A killed mutant
+    // The tests without a mutant twice in the driver and once in each of
+    // the two runs that give the usual way its time limit, and all of them
+    // once more for every mutant that is measured again. A killed mutant
     // gets to the slow test that had started before the failure was known,
     // at most.
     final most = 6 * 2 + 6 * 2 * measuredAgain + 2 * killed;
@@ -460,7 +513,32 @@ dev_dependencies:
     expect(
       builtInLine('lib/square.dart'),
       '  lib/square.dart: 0 killed with the mutants built in; 1 not killed '
-      'that way are measured one at a time',
+      'that way are measured the usual way',
+    );
+  });
+
+  test('test files that only pass together in one process pass in the '
+      'driver, and are still not tests to judge a mutant by', () async {
+    final builtIn = await mutate(
+      'lib/pair.dart',
+      schemata: true,
+      plan: '${dir.path}/pair.json',
+    );
+    // As without the option: the file is not in the report.
+    expect(builtIn, isEmpty);
+    expect(
+      builtInLine('lib/pair.dart'),
+      startsWith('  lib/pair.dart: 3 killed with the mutants built in'),
+    );
+    expect(
+      err,
+      containsAllInOrder([
+        'dart_mutant: lib/pair.dart: the tests do not pass the usual way in '
+            'a working copy; nothing of the driver is used',
+        startsWith('dart_mutant: lib/pair.dart has tests that fail in a '),
+        'Could not be mutation tested:',
+        startsWith('  - lib/pair.dart: the tests fail without a mutant'),
+      ]),
     );
   });
 
@@ -493,7 +571,7 @@ dev_dependencies:
       expect(
         builtInLine('lib/sign.dart'),
         '  lib/sign.dart: 4 killed with the mutants built in; 1 not killed '
-        'that way are measured one at a time',
+        'that way are measured the usual way',
       );
     }
     final merged = '${dir.path}/reports/merged.json';

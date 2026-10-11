@@ -211,12 +211,19 @@ Future<CommandResult> runCommand(
     ?stop?.then((_) => const _LimitReached()),
   ]);
   timer?.cancel();
+  // A caller that reads the lines must have got the last one before it is
+  // told that the command has ended.
+  Future<void> lines() => onLine == null
+      ? Future.value()
+      : Future.wait(drained).timeout(_drainGrace, onTimeout: () => const []);
   if (ended is ProcessSignal) {
     await _endTree(process, _killGrace);
+    await lines();
     return CommandResult(output: output.toString(), signal: ended);
   }
   if (ended is _LimitReached) {
     await _endTree(process, _limitGrace);
+    await lines();
     return CommandResult(output: output.toString(), timedOut: true);
   }
   await Future.any<Object?>([

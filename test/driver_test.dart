@@ -478,8 +478,29 @@ void main() {
       expect(found.time, 7);
     });
 
+    test('a test runner that was told to end is not done', () {
+      final found = log(['{"type":"done","success":null,"time":9}']);
+      expect(found.done, isFalse);
+      expect(log(['{"type":"done","success":false}']).done, isTrue);
+    });
+
+    test('the tests that passed are counted by position', () {
+      final found = log([
+        started(1, 'dart_mutant#0#-1 a'),
+        started(2, 'dart_mutant#0#-1 b'),
+        started(3, 'dart_mutant#1#4 a'),
+        started(4, 'loading'),
+        ended(1),
+        ended(2),
+        ended(3, 'failure'),
+        ended(4),
+        ended(3),
+      ]);
+      expect(found.passed, {0: 2, 1: 1});
+    });
+
     test('done, and ended after all', () {
-      final found = log(['{"type":"done","time":9}']);
+      final found = log(['{"type":"done","success":true,"time":9}']);
       expect(found.done, isTrue);
       expect(found.time, 9);
       found.ended();
@@ -646,6 +667,27 @@ void main() {
         'the tests do not pass without a mutant when they are run more '
         'than once in one process',
       );
+    });
+
+    test('other tests ran without a mutant than the first time', () {
+      const failure =
+          'the tests do not pass without a mutant when they are run more '
+          'than once in one process';
+      final fewer = log([
+        started(10, 'dart_mutant#0#-1 another test'),
+        ended(10),
+        ...run(5),
+        done,
+      ]);
+      expect(fewer.result.failure, failure);
+      final more = log([
+        ...run(5),
+        started(10, 'dart_mutant#5#-1 another test'),
+        ended(10),
+        done,
+      ]);
+      expect(more.result.failure, failure);
+      expect(more.result.killed, isEmpty);
     });
 
     test('a mutant without a test is measured again', () {

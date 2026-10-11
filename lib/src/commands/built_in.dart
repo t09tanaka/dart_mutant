@@ -247,10 +247,16 @@ Future<BuiltInRun> runBuiltIn({
             watch.reset();
           }
           final limit = log.limit(limitOf, first: baselineLimit);
-          if (watch.elapsed > limit && !stop.isCompleted) {
+          // Also when another driver of the file has found that nothing of
+          // them will be used.
+          if ((watch.elapsed > limit || failure != null || aborted != null) &&
+              !stop.isCompleted) {
             stop.complete();
           }
         });
+        // A line that comes after the driver was given up belongs to no
+        // driver: it must not reach the files of the next one.
+        var running = true;
         final CommandResult result;
         try {
           result = await runCommand(
@@ -259,7 +265,7 @@ Future<BuiltInRun> runBuiltIn({
             capture: true,
             signals: signals,
             onLine: (line) {
-              final id = log.add(line);
+              final id = running ? log.add(line) : null;
               if (id != null) {
                 File(p.join(state.path, 'killed', '$id')).createSync();
               }
@@ -267,9 +273,13 @@ Future<BuiltInRun> runBuiltIn({
             stop: stop.future,
           );
         } finally {
+          running = false;
           timer.cancel();
         }
-        if (result.signal != null || signals.signal != null) {
+        if (result.signal != null ||
+            signals.signal != null ||
+            failure != null ||
+            aborted != null) {
           return;
         }
         if (result.exitCode == null && !result.timedOut) {
