@@ -37,7 +37,6 @@
 // writes "started.<pid>": the runs of a parallel `dart_mutant run` are each
 // started in a copy of the package, at the same time.
 import 'dart:io';
-import 'dart:typed_data';
 
 Future<void> main(List<String> arguments) async {
   final shared = [
@@ -115,10 +114,10 @@ Future<void> main(List<String> arguments) async {
         } else {
           File('$shared/heavy.$pid').writeAsStringSync('');
         }
-        final held = <Uint8List>[];
+        final held = <List<int>>[];
         for (var chunk = 0; chunk < 96; chunk++) {
-          // Filled: memory that is only asked for is not held.
-          held.add(Uint8List(16 * 1024 * 1024)..fillRange(0, 16 * 1024 * 1024, 1));
+          // Two million numbers: 16 MB, and filled, so that it is held.
+          held.add(List.filled(2 * 1024 * 1024, chunk));
           await Future<void>.delayed(const Duration(milliseconds: 25));
         }
         await Future<void>.delayed(const Duration(hours: 1));

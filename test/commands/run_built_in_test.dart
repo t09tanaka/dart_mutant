@@ -42,16 +42,15 @@ void main() {
 // machine has no memory left. Not here: it stops by itself at 1.2 GB, and
 // the test then fails.
 const hold = '''
-import 'dart:typed_data';
-
-Future<List<Uint8List>> blocks(int count) async {
-  final held = <Uint8List>[];
-  for (var i = 0; i < count; i++) {
+Future<List<List<int>>> blocks(int wanted) async {
+  final held = <List<int>>[];
+  for (var i = 0; i < wanted; i++) {
     if (held.length == 150) {
       break;
     }
-    held.add(Uint8List(8388608)..fillRange(0, 8388608, 1));
-    await Future<void>.delayed(const Duration(milliseconds: 10));
+    // A million numbers: 8 MB.
+    held.add(List.filled(1048576, i));
+    await Future<void>.delayed(const Duration(milliseconds: 12));
   }
   return held;
 }
@@ -421,9 +420,8 @@ dev_dependencies:
       'RemoveCall ;: Killed',
     ]);
     expect(builtIn.where((mutant) => mutant.endsWith('Timeout')), hasLength(1));
-    final report = File(
-      '${dir.path}/reports/mutation/mutation.json',
-    ).readAsStringSync();
+    final written = '${dir.path}/reports/mutation/mutation.json';
+    final report = File(written).readAsStringSync();
     expect(
       RegExp(
         r'"status":\s*"Timeout",\s*"statusReason":\s*"the test run used more than '
