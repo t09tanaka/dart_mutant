@@ -529,7 +529,7 @@ Measured on the same machine on a quieter day, with `--force`: one start of the 
 | Pure Dart, five files                                     | about 340 | about 6 min   | about 2 min   | about 40 s            |
 | Flutter app, tests next to the files, five files          | about 145 | about 4 min   | about 2 min   | about 1.5 min         |
 | Flutter app, tests under `test/`, five files              | about 165 | about 6 min   | about 2.5 min | about 1.5 min         |
-| The gates of this package, 15 files                       | 2,785     | not measured  | 26 min        | about 10 min          |
+| The gates of this package, 15 files                       | 2,804     | not measured  | 26 min        | about 10 min          |
 
 - **The statuses of every mutant were the same with and without `--schemata`** in all five, report against report: the same mutants, places and statuses, about 3,000 of them. Two of the five files of each Flutter app are widgets, tested with `testWidgets`.
 - Between 85% and 100% of the mutants that compile were built in.

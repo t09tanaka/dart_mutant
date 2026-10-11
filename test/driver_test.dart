@@ -690,6 +690,21 @@ void main() {
       expect(more.result.killed, isEmpty);
     });
 
+    test('no test passed without a mutant', () {
+      // The tests of a mutant alone are no tests.
+      final found = log([
+        started(1, 'dart_mutant#1#4 a test'),
+        ended(1, 'failure'),
+        done,
+      ]);
+      expect(
+        found.result.failure,
+        'the tests do not pass without a mutant when they are run more '
+        'than once in one process',
+      );
+      expect(found.result.killed, isEmpty);
+    });
+
     test('a mutant without a test is measured again', () {
       final found = log([
         for (final line in run(5, failing: {1}))
