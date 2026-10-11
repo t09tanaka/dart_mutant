@@ -436,7 +436,9 @@ Measured with Dart 3.13 / Flutter 3.47 on a Mac with 12 logical processors (wher
 - No mutant reached the time limit of its test run, so none had to be run again alone.
 - More jobs than a quarter of the processors gained little, and each test run got slower as the jobs went up, which is why the default stops there.
 
-The gates of this package itself (see [Development](#the-gates-of-this-package)), on the same machine and as busy: 11 files, about 1,700 mutants of which about 180 do not compile, about 35 minutes with `--jobs 3`. Nearly all of that is two files: their tests open an analysis session, or run two implementations side by side, and a mutant costs 5 to 8 seconds of a job there, against about a second and a half for the files with plain tests.
+The gates of this package itself (see [Development](#the-gates-of-this-package)), on the same machine and as busy, measured when there were eleven of them: 11 files, about 1,700 mutants of which about 180 do not compile, about 35 minutes with `--jobs 3`. Nearly all of that is two files: their tests open an analysis session, or run two implementations side by side, and a mutant costs 5 to 8 seconds of a job there, against about a second and a half for the files with plain tests.
+
+In the workflow of this package (hosted runners of GitHub Actions, `--jobs 2`, one job per gate) the gate with the slowest tests, 544 mutants of which 483 compile, took 54 minutes as one job. Divided with `--shard` into four jobs, each took 9 to 14 minutes, and the whole workflow 16 minutes from start to end. The four parts had 119 to 122 test runs each and still differed that much: one test run cost between 4 and 7 seconds from job to job. The jobs together took a little less time than the one (46 minutes against 54 in these two runs), so dividing cost nothing there; for a file whose mutants take seconds in total, the checkout, `pub get` and the tests without a mutant of every part would outweigh what is gained.
 
 A second run without `--force` and without a change takes under a second, and makes no copy.
 
