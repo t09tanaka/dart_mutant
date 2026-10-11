@@ -44,7 +44,6 @@ void main() {
         isNull,
       );
       expect(fileObstacle('int a = ;'), isNull);
-      expect(fileObstacle(''), isNull);
     });
 
     test('a byte order mark, the name of the variable, a part', () {

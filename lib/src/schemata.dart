@@ -179,12 +179,16 @@ class _Covering extends GeneralizingAstVisitor<void> {
   }
 }
 
-/// The nodes of [unit] that hold the text from [from] to [to], the smallest
-/// first.
+/// The nodes of [unit] that hold the text from [from] to [to], the inner
+/// ones first.
+///
+/// (Where [from] is [to] and one node ends there and the next one starts,
+/// the nodes of the second come first, then the ones of the first, then
+/// what is around both.)
 List<AstNode> _around(CompilationUnit unit, int from, int to) {
   final covering = _Covering(from, to);
   unit.accept(covering);
-  return covering.nodes..sort((a, b) => a.length - b.length);
+  return covering.nodes.reversed.toList();
 }
 
 /// True for a statement that declares a name for the statements after it:
