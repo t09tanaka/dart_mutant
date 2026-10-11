@@ -7,11 +7,11 @@ import 'package:path/path.dart' as p;
 
 import '../args.dart';
 import '../driver.dart';
-import '../html_report.dart';
 import '../io/analysis.dart';
 import '../io/files.dart';
 import '../io/lock.dart';
 import '../io/process.dart';
+import '../io/report_files.dart';
 import '../io/work_copies.dart';
 import '../json.dart';
 import '../mutant.dart';
@@ -20,6 +20,7 @@ import '../output.dart';
 import '../parallel.dart';
 import '../plan.dart';
 import '../schemata.dart';
+import '../shard.dart';
 import '../syntax_mutators.dart';
 import 'built_in.dart';
 
@@ -215,34 +216,24 @@ void _writeIncremental(_State state, JsonObject files) {
   state.incremental.writeAsStringSync(jsonEncode({'files': files}));
 }
 
-/// Writes the report to [path], and as a page to [htmlPath] when `--html`
-/// asks for one: the two always say the same.
-///
-/// Returns why the page could not be written, when it could not: the report
-/// is there then, and the run still says what it found.
+/// Writes the report of [runs] and [others] to [path], and as a page to
+/// [htmlPath] when `--html` asks for one, see [writeReportFiles]. With
+/// [shard] it is a part of a run, which says so in the title of the page.
 String? _writeReport(
   String path,
   String? htmlPath,
   Map<String, FileRun> runs,
-  JsonObject others,
-) {
-  final report = buildReport(runs, others: others);
-  File(path).parent.createSync(recursive: true);
-  File(
-    path,
-  ).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(report));
-  if (htmlPath == null) {
-    return null;
-  }
-  try {
-    File(htmlPath).parent.createSync(recursive: true);
-    File(htmlPath).writeAsStringSync(htmlReport(report));
-    return null;
-  } on FileSystemException catch (error) {
-    return 'cannot write the page $htmlPath (${_reason(error)}). The report '
-        'is in $path';
-  }
-}
+  JsonObject others, {
+  Shard? shard,
+  List<String> notTested = const [],
+}) => writeReportFiles(
+  path,
+  htmlPath,
+  buildReport(runs, others: others, shard: shard, notTested: notTested),
+  title: shard == null
+      ? 'Mutation report'
+      : 'Mutation report, shard ${shard.label}',
+);
 
 /// The files to mutate and their tests, from the plan or from the arguments.
 /// Throws [UsageError] when they name nothing that can be run.
@@ -584,40 +575,8 @@ Future<int> runMutation(
   final selected = selection.selected;
 
   final reportPath = args.report ?? _inPackage(root, defaultReport);
-  final String? oldReport;
-  try {
-    oldReport = File(reportPath).existsSync() ? readText(reportPath) : null;
-  } on FileSystemException catch (error) {
-    throw UsageError('cannot read $reportPath (${_reason(error)})');
-  }
-  // --report with the path of something else must not cost that file.
-  if (oldReport != null && !isReport(oldReport)) {
-    throw UsageError(
-      '$reportPath exists and is not a mutation report. It is not '
-      'overwritten; give another --report, or delete the file',
-    );
-  }
   final htmlPath = args.html;
-  if (htmlPath != null) {
-    if (p.equals(p.absolute(htmlPath), p.absolute(reportPath))) {
-      throw UsageError('--html and --report name the same file ($htmlPath)');
-    }
-    if (FileSystemEntity.isDirectorySync(htmlPath)) {
-      throw UsageError('--html $htmlPath is a directory');
-    }
-    final String? oldHtml;
-    try {
-      oldHtml = File(htmlPath).existsSync() ? readText(htmlPath) : null;
-    } on FileSystemException catch (error) {
-      throw UsageError('cannot read $htmlPath (${_reason(error)})');
-    }
-    if (oldHtml != null && !isHtmlReport(oldHtml)) {
-      throw UsageError(
-        '$htmlPath exists and is not a report page of $executable. It is '
-        'not overwritten; give another --html, or delete the file',
-      );
-    }
-  }
+  final oldReport = checkReportTargets(reportPath, htmlPath);
   final state = _State(root);
   // Before anything is written: a second run in the package would take the
   // mutant of the first for what a killed run left behind.
@@ -668,7 +627,10 @@ Future<int> _locked(
   // A report of an earlier run must not be read as the result of this one
   // if this one writes none. With --only that holds for the files of this
   // run; what the report says about the others is kept.
-  final others = args.only.isEmpty
+  // A part of a run (--shard) keeps nothing: it is put together with the
+  // other parts of the same run, not with an earlier one.
+  final shard = args.shard;
+  final others = args.only.isEmpty || shard != null
       ? const <String, Object?>{}
       : otherReportFiles(oldReport, selected);
   // The page of `--html` goes the way of the report.
@@ -864,9 +826,10 @@ Future<int> _locked(
               await analysis.compileErrorOf(path, mutant.applyTo(source)),
             );
           }
+          // With --shard only the mutants of this part are built in.
           final compiling = [
             for (final (index, reason) in reasons.indexed)
-              if (reason == null) index,
+              if (reason == null && (shard == null || shard.has(index))) index,
           ];
           if (schemata &&
               compiling.isNotEmpty &&
@@ -913,11 +876,16 @@ Future<int> _locked(
       }
 
       final milliseconds = List<int>.filled(mutants.length, 0);
-      var pending = [
+      // With --shard the other mutants are left to the other parts.
+      final own = [
         for (var index = 0; index < mutants.length; index++)
+          if (shard == null || shard.has(index)) index,
+      ];
+      var pending = [
+        for (final index in own)
           if (statuses[index] == null) index,
       ];
-      final reused = reusable == null ? 0 : mutants.length - pending.length;
+      final reused = reusable == null ? 0 : own.length - pending.length;
 
       var remaining = pending;
       var announced = false;
@@ -934,7 +902,9 @@ Future<int> _locked(
             'one program',
           );
         }
-        final refused = statuses.where((s) => s == compileError).length;
+        final refused = own
+            .where((index) => statuses[index] == compileError)
+            .length;
         var said = reusable != null || refused == 0;
         if (instead == null && built != null && built.ids.isEmpty) {
           io.out(
@@ -1067,7 +1037,9 @@ Future<int> _locked(
       if (remaining.isNotEmpty) {
         inPlace = true;
         final run = mutantCommand(command, target.tests);
-        final refused = statuses.where((s) => s == compileError).length;
+        final refused = own
+            .where((index) => statuses[index] == compileError)
+            .length;
         if (!announced) {
           io.out(
             '  $path: ${pending.length} of ${mutants.length} mutant(s) with '
@@ -1180,20 +1152,31 @@ Future<int> _locked(
         }
       }
 
+      // What is known of every mutant, also of those of another part: a
+      // later run in this package starts from it. Every mutant of this
+      // run has a status by now; only one of another part may have none.
+      final known = [
+        for (final (index, mutant) in mutants.indexed)
+          MutantResult(
+            mutant,
+            shard == null || shard.has(index)
+                ? statuses[index]!
+                : statuses[index] ?? notRun,
+            milliseconds: milliseconds[index],
+            reason: reasons[index],
+          ),
+      ];
       final run = FileRun(
         source: source,
         results: [
-          for (final (index, mutant) in mutants.indexed)
-            MutantResult(
-              mutant,
-              statuses[index]!,
-              milliseconds: milliseconds[index],
-              reason: reasons[index],
-            ),
+          for (final (index, result) in known.indexed)
+            shard == null || shard.has(index)
+                ? result
+                : MutantResult(result.mutant, notRun),
         ],
       );
       runs[path] = run;
-      kept[path] = incrementalEntry(input, run.results);
+      kept[path] = incrementalEntry(input, known);
       _writeIncremental(state, {...carried, ...kept});
       io.out(
         fileLine(
@@ -1232,7 +1215,14 @@ Future<int> _locked(
     return 1;
   }
 
-  final pageProblem = _writeReport(reportPath, htmlPath, runs, others);
+  final pageProblem = _writeReport(
+    reportPath,
+    htmlPath,
+    runs,
+    others,
+    shard: shard,
+    notTested: failures.keys.toList(),
+  );
   final survivors = survivorLines(runs);
   if (survivors.isNotEmpty) {
     io.out('Survived:');
@@ -1244,8 +1234,10 @@ Future<int> _locked(
       io.err('  - $path: $reason');
     }
   }
+  // The last line of a part says that it is one.
   final summary =
-      '(${totalCounts(runs.values)}'
+      '(${shard == null ? '' : 'shard ${shard.label}: '}'
+      '${totalCounts(runs.values)}'
       '${failures.isEmpty ? '' : ' / ${failures.length} file(s) not tested'})';
   if (pageProblem != null) {
     io.err('$executable: $pageProblem');

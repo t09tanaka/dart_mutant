@@ -38,10 +38,11 @@ It can be a `dev_dependency` as well (`dart run dart_mutant run …`), but then 
 ```
 dart_mutant run [options] <file or glob>... [-- <test command>]
 dart_mutant run [options] --plan <plan.json> [-- <test command>]
+dart_mutant merge <part.json>... --report <path> [--html <path>]
 dart_mutant --version | --help
 ```
 
-Run it in the package (or name the package with `--root`).
+Run it in the package (or name the package with `--root`). `merge` is for a run that was divided with `--shard`, see [A run in several parts](#a-run-in-several-parts---shard-and-merge).
 
 ### Which files, and which tests
 
@@ -85,6 +86,7 @@ dart_mutant run --plan mutation-plan.json
 | `--jobs <n>`      | How many test runs are started at a time, see [Several mutants at a time](#several-mutants-at-a-time---jobs). Default: a quarter of the processors, at least 1 and at most 4. `1` changes the files in place, one mutant at a time |
 | `--schemata`      | Experimental. Build the mutants of a file into one program and run its tests on all of them in one process, see [All mutants of a file in one program](#all-mutants-of-a-file-in-one-program---schemata) |
 | `--no-schemata`   | One start of the test runner per mutant. The default                                                 |
+| `--shard <i>/<n>` | Run part `i` of `n` of the mutants of each file, see [A run in several parts](#a-run-in-several-parts---shard-and-merge). The report is then a part, not a result |
 | `-- <command>`    | The command that runs test files                                                                     |
 
 **The test command** is `flutter test --no-pub` when the pubspec has a dependency from the Flutter SDK, and `dart test` otherwise. A command after `--` replaces it (`-- fvm flutter test --no-pub`). `--fail-fast --timeout 10s` and the test files are appended to it, so it has to be a `dart test` / `flutter test` of some kind. It is started in the package, without a shell. (With `--schemata` the program that holds all mutants of a file is run with `--timeout 10s --reporter json` instead, so the command has to take those as well.)
@@ -96,7 +98,7 @@ For each file a line when its tests start (with `, 3 at a time` when the mutants
 | Exit code       | Meaning                                                                                       |
 | --------------- | --------------------------------------------------------------------------------------------- |
 | 0               | No mutant survived                                                                            |
-| 1               | A mutant survived, or something could not be mutation tested: a file without a test, tests that fail without a mutant, a file that is not there or cannot be parsed, a package that is not resolved, a test command that cannot be started, a page of `--html` that cannot be written (the report is written), another `dart_mutant` at work in the package (nothing is changed then) |
+| 1               | A mutant survived, or something could not be mutation tested: a file without a test, tests that fail without a mutant, a file that is not there or cannot be parsed, a package that is not resolved, a test command that cannot be started, a page of `--html` that cannot be written (the report is written), another `dart_mutant` at work in the package (nothing is changed then). For `merge`: a mutant survived, or the parts are not all the parts of one run (no report is written then) |
 | 2               | Wrong usage: an unknown option, a plan that cannot be read, a glob that matches nothing, a file that is not a `.dart` file inside the package, a `--report` or `--html` that would replace a file of another kind. Nothing is run or changed |
 | 130 / 143 / 129 | Interrupted (SIGINT / SIGTERM / SIGHUP); the working copies were removed, or the files were put back, and no report was written |
 
@@ -109,6 +111,7 @@ A run starts by removing the report of the last run (with `--only`: what it says
 | `Killed`           | The test run failed                                                                          |
 | `Survived`         | The test run passed                                                                          |
 | `Timeout`          | The test run did not end within its limit, see [Time limits](#time-limits)                   |
+| `Pending`          | Only in the report of a part (`--shard`): the mutant belongs to another part, and was not evaluated in this one |
 | `CompileError`     | The mutant is not a program. Nothing was evaluated. Found by the analyzer before the run (the report has the message as `statusReason`), or, rarely, by the compiler in the test run (the output has `file.dart:12:3: Error:` or `Compilation failed`), see [Limitations](#limitations) |
 
 ## Mutators
@@ -305,7 +308,7 @@ In what was measured, between none and a third of the mutants of a file that com
 
 The drivers run in the working copies of `--jobs`: when a file has more than 25 mutants to build in, they are shared out between up to as many drivers as there are jobs, each in its copy. What is left for the usual way is then run in the same copies, as many at a time as there are jobs. `--jobs 1 --schemata` uses one copy and still writes nothing to your files; a file that cannot be put into a copy (behind a symbolic link) is run in place, without the option.
 
-`--plan`, `--only`, `--force`, `--report`, `--html`, the results of the last run and the lock mean what they mean without the option. The results of the last run do not say which way they were measured, and are reused either way.
+`--plan`, `--only`, `--force`, `--report`, `--html`, `--shard`, the results of the last run and the lock mean what they mean without the option. A part of a run (`--shard`) builds in the mutants of that part only, and the parts are put together by `merge` as always. The results of the last run do not say which way they were measured, and are reused either way.
 
 ### What can still go wrong
 
@@ -315,6 +318,125 @@ The drivers run in the working copies of `--jobs`: when a file has more than 25 
 - **Code that runs in another isolate** does not see the variable. Its mutants are not killed in the driver and are run the usual way.
 - **It does not always pay.** A mutant that survives costs its run in the driver and then a run of its own. A file whose mutants mostly survive, or mostly cannot be built in, takes about as long as without the option; so does a file whose tests take seconds, where the time was never the start of the runner.
 - **A test that is slow because the machine is busy** fails as it does without the option; when that is a test without a mutant, the whole file falls back to the usual way.
+## A run in several parts (`--shard` and `merge`)
+
+One file with many mutants, or with slow tests, takes as long as it takes: `--jobs` is limited by the processors of one machine. `--shard <i>/<n>` divides the mutants of **each file** into `n` parts and runs part `i`, so that `n` machines (the jobs of a CI workflow) can each take one, and `dart_mutant merge` puts their reports together into the report of the whole run.
+
+```
+$ dart_mutant run lib/discount.dart --shard 1/2 --report reports/parts/1.json
+  lib/discount.dart: 9 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 3 at a time (2 do not compile)
+  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (7.7s)
+Survived:
+  lib/discount.dart:7:30 NumberLiteral: 0 → 1
+dart_mutant: FAILED (shard 1/2: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run))
+$ dart_mutant run lib/discount.dart --shard 2/2 --report reports/parts/2.json
+  lib/discount.dart: 9 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 3 at a time (2 do not compile)
+  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (7.7s)
+Survived:
+  lib/discount.dart:8:39 MethodExpression: round → ceil
+dart_mutant: FAILED (shard 2/2: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run))
+$ dart_mutant merge reports/parts/1.json reports/parts/2.json --report reports/mutation/mutation.json
+  lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run)
+Survived:
+  lib/discount.dart:7:30 NumberLiteral: 0 → 1
+  lib/discount.dart:8:39 MethodExpression: round → ceil
+dart_mutant: FAILED (2 part(s) merged: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run))
+```
+
+(That is [`example/`](example/) again.)
+
+**Which mutant is in which part.** The mutant with the number `k` of a file (the `k` of its id `lib/a.dart#k`, from 0) belongs to part `k mod n`, plus one: with `--shard 1/4` the mutants 0, 4, 8, …. The numbers are the same in every run of the same source, whatever `--jobs`, the order of the files and the results of the last run are, so every mutant belongs to exactly one part. The syntax mutants come first and the typed ones after them, both in the order of the source, so each part gets its share of every region of the file and of both kinds. A mutant that does not compile is reported by the part it belongs to, like any other; it costs that part no test run.
+
+Every part makes and checks **all** mutants of a file (it has to, to number them), and a part that has a mutant to run first runs the tests without a mutant. That is what a part costs before its first mutant: the same as a whole run. What is divided is the test runs on the mutants. The first line of a file counts the part's own mutants (`9 of 22 mutant(s) … (2 do not compile)`: nine to run, two that do not compile, of 22 in the file).
+
+**The report of a part is not a result.** It is a valid report in the same schema, and it lists every mutant of the file, but the mutants of the other parts have the status `Pending`, and `config.shard` says which part it is:
+
+```json
+"config": {"mutatorsVersion": 2, "shard": {"index": 2, "count": 2, "notTested": []}}
+```
+
+A tool that judges a report must not pass a `Pending` mutant ([`test_gates`](https://pub.dev/packages/test_gates) fails it: a mutant that was not evaluated proves nothing). The last line of a run with `--shard` says `shard 2/2:` and how many of the mutants were its own. The exit code of a part is about its own mutants only.
+
+### `merge`
+
+```bash
+dart_mutant merge <part.json>... --report <path> [--html <path>]
+```
+
+reads the reports of the parts `1/n` to `n/n` of one run and writes the report that the run would have written without `--shard`: the same files, mutants, ids, order and statuses (and `duration` as each part measured it). It prints the counts, the survivors and the totals like a run, and its exit code is 0 when no mutant survived and 1 when one did. It needs no package, and runs nothing.
+
+**It refuses parts that are not all the parts of one run**, with exit code 1 and without writing a report (the report and the page that were at `--report` and `--html` are removed before the parts are looked at, so nothing old can be read as the result; wrong usage, exit code 2, changes nothing):
+
+```
+$ dart_mutant merge reports/parts/1.json --report reports/mutation/mutation.json
+The parts are not the parts of one run:
+  - shard 2/2 is missing
+dart_mutant: FAILED (nothing was merged)
+```
+
+- a file that is not the report of a part (the report of a whole run, or anything else);
+- a part that is missing (the first twenty are named), or given twice;
+- parts of different divisions (`1/2` and `2/4`);
+- a part that was written by another version of this tool or of its mutators than the one that merges;
+- parts with different files, another source of a file, or other mutants (a part of another state of the file, or made with other dependencies);
+- a mutant that its own part did not evaluate, or that another part gave a status, or a status, a place or a duration that a report of this tool cannot have;
+- a file that could not be mutation tested in a part (no test, tests that fail without a mutant, …). Such a file is not in a report, so each part names it in `config.shard.notTested`.
+
+A part that did not run must not pass for mutants that were killed: that is what these checks are for.
+
+**What is not checked: the tests.** A part does not say which test files and which test command it was run with, so parts of the same source that were run with different tests fit together. Run the parts from one commit and with one command; the jobs of one workflow run do.
+
+### With the other options
+
+- `--jobs`: as without `--shard`, within the part.
+- `--plan`, files and globs: every part has to be given the same ones. `merge` notices when the files differ.
+- `--only`: the part has the files of this run and nothing else. What an earlier report says about other files is not kept in a part, and a run without `--shard` keeps nothing of a part.
+- `--force` and the results of the last run: a part reuses the results it finds for its own mutants, and what it leaves in `.dart_tool` says which mutants are still without one, so the parts of one run can also be run one after the other in the same checkout, and a run without `--shard` after them only runs what is left. In CI give `--force`, as for any run there.
+- `--html`: the page of a part shows the part (title `Mutation report, shard 2/4`); the other mutants are shown as pending. `merge --html` writes the page of the whole run.
+- `--shard 1/1` is the whole run, written as a part.
+
+### In CI
+
+**One part per checkout.** [One run at a time has a package](#one-run-at-a-time-in-a-package), so two parts cannot run side by side in the same directory: the second is turned away. `--shard` is for jobs that each have a checkout of their own. For example with GitHub Actions:
+
+```yaml
+jobs:
+  part:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - run: dart pub get
+      - run: dart pub global activate dart_mutant
+      # Exit code 1 is a survivor of this part: that is judged below. A part
+      # that wrote no report is noticed below as well, because it is missing.
+      - run: dart pub global run dart_mutant run --plan mutation-plan.json --force --shard ${{ matrix.shard }}/4 --report part.json || test $? -eq 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mutation-part-${{ matrix.shard }}
+          path: part.json
+
+  mutation:
+    needs: part
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dart-lang/setup-dart@v1
+      - run: dart pub global activate dart_mutant
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mutation-part-*
+          path: parts
+      - run: dart pub global run dart_mutant merge parts/*/part.json --report mutation.json --html mutation.html
+```
+
+The number of parts is in two places there (the matrix and `/4`); `merge` fails when they disagree, or when a job is added to one and not to the other. The last job is the one to require: it fails when a part is missing, and when a mutant survived.
+
+How much it gains depends on what a part costs before its first mutant (the checkout, `pub get`, the analysis of all mutants, the tests without a mutant) against the time of the test runs it takes over. See [How long it takes](#how-long-it-takes) for this package.
 
 ## One run at a time in a package
 
@@ -343,7 +465,7 @@ With `--jobs 1` and without `--schemata` (the default on a machine with fewer th
 
 `reports/mutation/mutation.json` (or `--report`) is written in the [mutation-testing-elements JSON schema](https://github.com/stryker-mutator/mutation-testing-elements/tree/master/packages/report-schema), version 2: the schema the Stryker mutation testing tools write. `dart_mutant` is not one of those tools and is not affiliated with them; it writes the same format so that what reads that format can read this report.
 
-At the top `schemaVersion`, `thresholds` and `framework` (`dart_mutant` and its version). For each file: `language` (`dart`), `source` (the file as it was mutated), and for each mutant `id` (`<path>#<number>`), `mutatorName`, `replacement`, `location` (1-based lines and columns, `end` exclusive), `status`, `duration` in milliseconds (0 when no test was run in this run: the mutant does not compile, or its result is taken from the last run), and `statusReason` for a compile error the analyzer found. `thresholds` is there because the schema requires it and only colours a viewer; see above for why this tool has none.
+At the top `schemaVersion`, `thresholds`, `framework` (`dart_mutant` and its version) and `config` (`mutatorsVersion`, a number that changes when the mutators would make other mutants of the same source; and `shard` in the report of [a part of a run](#a-run-in-several-parts---shard-and-merge)). For each file: `language` (`dart`), `source` (the file as it was mutated), and for each mutant `id` (`<path>#<number>`), `mutatorName`, `replacement`, `location` (1-based lines and columns, `end` exclusive), `status`, `duration` in milliseconds (0 when no test was run in this run: the mutant does not compile, its result is taken from the last run, or it belongs to another part), and `statusReason` for a compile error the analyzer found. `thresholds` is there because the schema requires it and only colours a viewer; see above for why this tool has none.
 
 The numbers after `#` are stable for the syntax mutators (they come first, in the order of the source). The typed mutants follow, in the order of the source. A tool that keys on a mutant should use `mutatorName`, the replaced text and `replacement`, not the number.
 
@@ -391,7 +513,9 @@ Measured with Dart 3.13 / Flutter 3.47 on a Mac with 12 logical processors (wher
 - No mutant reached the time limit of its test run, so none had to be run again alone.
 - More jobs than a quarter of the processors gained little, and each test run got slower as the jobs went up, which is why the default stops there.
 
-The gates of this package itself (see [Development](#the-gates-of-this-package)), on the same machine and as busy: 11 files, about 1,700 mutants of which about 180 do not compile, about 35 minutes with `--jobs 3`. Nearly all of that is two files: their tests open an analysis session, or run two implementations side by side, and a mutant costs 5 to 8 seconds of a job there, against about a second and a half for the files with plain tests.
+The gates of this package itself (see [Development](#the-gates-of-this-package)), on the same machine and as busy, measured when there were eleven of them: 11 files, about 1,700 mutants of which about 180 do not compile, about 35 minutes with `--jobs 3`. Nearly all of that is two files: their tests open an analysis session, or run two implementations side by side, and a mutant costs 5 to 8 seconds of a job there, against about a second and a half for the files with plain tests.
+
+In the workflow of this package (hosted runners of GitHub Actions, `--jobs 2`, one job per gate) the gate with the slowest tests, 544 mutants of which 483 compile, took 54 minutes as one job. Divided with `--shard` into four jobs, each took 9 to 14 minutes, and the whole workflow 16 minutes from start to end. The four parts had 119 to 122 test runs each and still differed that much: one test run cost between 4 and 7 seconds from job to job. The jobs together took a little less time than the one (46 minutes against 54 in these two runs), so dividing cost nothing there; for a file whose mutants take seconds in total, the checkout, `pub get` and the tests without a mutant of every part would outweigh what is gained.
 
 A second run without `--force` and without a change takes under a second, and makes no copy.
 
@@ -404,7 +528,7 @@ dart analyze --fatal-infos
 dart test
 ```
 
-The code under `lib/src/` is not an API. What decides something is in pure functions: making the mutants (`syntax_mutators.dart`, `typed_mutators.dart`), numbering them, classifying a test run, building the report and reusing results (`mutation_run.dart`), the page (`html_report.dart`), the plan and the paths (`plan.dart`), the command line (`args.dart`), the rules of the working copies (`parallel.dart`) and of the lock (`lock_state.dart`), where a mutant can be built into its file and what the file is then (`schemata.dart`), and the driver, its plan and what its report means (`driver.dart`). The analysis session, the files, the copies, the lock and the processes are in `lib/src/io/`, and `lib/src/commands/` puts them together (`run.dart`; `built_in.dart` for `--schemata`).
+The code under `lib/src/` is not an API. What decides something is in pure functions: making the mutants (`syntax_mutators.dart`, `typed_mutators.dart`), numbering them, classifying a test run, building the report and reusing results (`mutation_run.dart`), the parts of a run and putting them together (`shard.dart`, `merge.dart`), the page (`html_report.dart`), the plan and the paths (`plan.dart`), the command line (`args.dart`), the rules of the working copies (`parallel.dart`) and of the lock (`lock_state.dart`), where a mutant can be built into its file and what the file is then (`schemata.dart`), and the driver, its plan and what its report means (`driver.dart`). The analysis session, the files, the copies, the lock and the processes are in `lib/src/io/`, and `lib/src/commands/` puts them together (`run.dart`, `merge.dart`; `built_in.dart` for `--schemata`).
 
 The tests under `test/commands` start processes (the command line, with a stand-in for the test runner, and the real `dart test` on `example/` and, for `--schemata`, on a package the test writes); they carry the tag `process`.
 
@@ -425,6 +549,14 @@ dart run tool/self_mutation.dart                              # every gate
 dart run tool/self_mutation.dart --gate lib/src/plan.dart     # one gate
 dart run tool/self_mutation.dart --force                      # nothing from the last run
 dart run tool/self_mutation.dart --schemata                   # the mutants of a gate in one program
+```
+
+In the workflow ([`.github/workflows/mutation.yml`](.github/workflows/mutation.yml)) every gate is a job of its own, and the gates whose tests are slow are run in parts (`--shard`), which the last job puts together (`merge`) and judges. Which gates, and into how many parts, is written in one place, `_shards` in the script; the jobs are made from it and from `test-gates.json`:
+
+```bash
+dart tool/self_mutation.dart --matrix                                             # the jobs, as JSON
+dart run tool/self_mutation.dart --gate lib/src/typed_mutators.dart --shard 1/4   # one part: run, not judged
+dart run tool/self_mutation.dart --merge parts                                    # merge the parts of each such gate, and judge
 ```
 
 The script turns the gates into a plan, runs `dart_mutant run --plan` from this checkout (report: `reports/mutation/mutation.json`, page: `reports/mutation/mutation.html`), and gives the report to `test_gates mutation-result`, which requires every mutant to be killed, not to compile, or to be listed under `equivalentMutants` / `expectedTimeouts` of its gate with a reason. Nothing had to be changed on either side for this: the report of `dart_mutant` is one `test_gates mutation-result` reads.

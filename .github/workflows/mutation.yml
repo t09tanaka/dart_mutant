@@ -28,28 +28,35 @@ permissions:
   contents: read
 
 jobs:
-  # One job per gate. The list is read from test-gates.json, so a gate that
-  # is added there is run here.
+  # One job per gate, and several for a gate that is run in parts. The list
+  # is made by tool/self_mutation.dart from test-gates.json, so a gate that
+  # is added there is run here; which gates are divided, and into how many
+  # parts, is written in that script and nowhere else.
   gates:
     name: List the gates
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      paths: ${{ steps.list.outputs.paths }}
+      matrix: ${{ steps.list.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      # The script imports nothing but the SDK: no `dart pub get`.
       - id: list
-        run: echo "paths=$(jq -c '[.gates[].path]' test-gates.json)" >> "$GITHUB_OUTPUT"
+        run: |
+          dart tool/self_mutation.dart --matrix > matrix.json
+          echo "matrix=$(tail -n 1 matrix.json)" >> "$GITHUB_OUTPUT"
 
   gate:
-    name: ${{ matrix.gate }}
+    name: ${{ matrix.name }}
     needs: gates
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      matrix:
-        gate: ${{ fromJSON(needs.gates.outputs.paths) }}
+      matrix: ${{ fromJSON(needs.gates.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
@@ -58,13 +65,18 @@ jobs:
       - run: dart pub get
       # Two test runs at a time, in working copies: the default would be one
       # on a runner of this size.
-      - run: dart run tool/self_mutation.dart --force --jobs 2 --gate "$GATE"
+      #
+      # A gate in one job (shard 1/1) is run and judged here. A part of a
+      # gate (`dart_mutant run --shard`) is only run: its report is a part,
+      # which the last job puts together with the others and judges.
+      - run: dart run tool/self_mutation.dart --force --jobs 2 --gate "$GATE" --shard "$SHARD"
         env:
           GATE: ${{ matrix.gate }}
+          SHARD: ${{ matrix.shard }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mutation-report-${{ strategy.job-index }}
+          name: ${{ matrix.artifact }}
           path: |
             reports/mutation/mutation.json
             reports/mutation/mutation.html
@@ -76,8 +88,29 @@ jobs:
     needs: gate
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
-      - run: test "$RESULT" = success
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mutation-part-*
+          path: parts
+      # The gates that were run in parts: `dart_mutant merge` fails when a
+      # part is missing, given twice or made from another source, and
+      # test_gates judges what the parts are together.
+      - run: dart run tool/self_mutation.dart --merge parts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-report-merged
+          path: reports/mutation/merged
+          if-no-files-found: ignore
+      # The gates that were run in one job, and the parts as runs.
+      - if: always()
+        run: test "$RESULT" = success
         env:
           RESULT: ${{ needs.gate.result }}

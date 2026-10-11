@@ -8,7 +8,9 @@ import 'dart:io';
 
 import 'package:dart_mutant/dart_mutant.dart';
 import 'package:dart_mutant/src/args.dart';
+import 'package:dart_mutant/src/commands/merge.dart';
 import 'package:dart_mutant/src/commands/run.dart';
+import 'package:dart_mutant/src/shard.dart';
 import 'package:test/test.dart';
 
 import '../support/compiled.dart';
@@ -218,6 +220,8 @@ dev_dependencies:
     int jobs = 2,
     bool force = true,
     Duration? limit,
+    Shard? shard,
+    String? reportPath,
   }) async {
     final before = tree();
     await runMutation(
@@ -227,6 +231,8 @@ dev_dependencies:
         force: force,
         jobs: jobs,
         schemata: schemata,
+        shard: shard,
+        report: reportPath,
         command: [Platform.resolvedExecutable, 'test'],
       ),
       Io(out: out.add, err: err.add),
@@ -239,7 +245,7 @@ dev_dependencies:
     final report =
         jsonDecode(
               File(
-                '${dir.path}/reports/mutation/mutation.json',
+                reportPath ?? '${dir.path}/reports/mutation/mutation.json',
               ).readAsStringSync(),
             )
             as Map<String, Object?>;
@@ -455,6 +461,69 @@ dev_dependencies:
       builtInLine('lib/square.dart'),
       '  lib/square.dart: 0 killed with the mutants built in; 1 not killed '
       'that way are measured one at a time',
+    );
+  });
+
+  test('with --shard each part builds in its own mutants, and the parts '
+      'put together are the run that was not divided', () async {
+    final whole = await mutate('lib/sign.dart', schemata: true);
+    final parts = <String>[];
+    for (final index in [1, 2]) {
+      out.clear();
+      final part = '${dir.path}/reports/part$index.json';
+      parts.add(part);
+      final statuses = await mutate(
+        'lib/sign.dart',
+        schemata: true,
+        shard: Shard(index, 2),
+        reportPath: part,
+      );
+      expect(statuses, [
+        for (final (number, status) in whole.indexed)
+          number % 2 == index - 1
+              ? status
+              : '${status.substring(0, status.lastIndexOf(': '))}: Pending',
+      ]);
+      // Five mutants each: all of them compile and are built in, and the
+      // one no test fails on is measured the usual way.
+      expect(
+        out,
+        contains(startsWith('  lib/sign.dart: 5 of 10 mutant(s) built into')),
+      );
+      expect(
+        builtInLine('lib/sign.dart'),
+        '  lib/sign.dart: 4 killed with the mutants built in; 1 not killed '
+        'that way are measured one at a time',
+      );
+    }
+    final merged = '${dir.path}/reports/merged.json';
+    expect(
+      runMerge(
+        MergeArgs(parts: parts, report: merged),
+        Io(out: out.add, err: err.add),
+      ),
+      1,
+      reason: 'two mutants survive',
+    );
+    String statusesOf(String path) => jsonEncode([
+      for (final mutant
+          in (((jsonDecode(File(path).readAsStringSync())
+                          as Map<String, Object?>)['files']!
+                      as Map<String, Object?>)['lib/sign.dart']!
+                  as Map<String, Object?>)['mutants']!
+              as List)
+        [
+          (mutant as Map<String, Object?>)['id'],
+          mutant['mutatorName'],
+          mutant['replacement'],
+          mutant['location'],
+          mutant['status'],
+        ],
+    ]);
+    await mutate('lib/sign.dart', schemata: false);
+    expect(
+      statusesOf(merged),
+      statusesOf('${dir.path}/reports/mutation/mutation.json'),
     );
   });
 

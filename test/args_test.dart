@@ -43,6 +43,7 @@ void main() {
     expect(args.force, isFalse);
     expect(args.jobs, isNull);
     expect(args.schemata, isNull);
+    expect(args.shard, isNull);
     expect(args.only, isEmpty);
     expect(args.targets, isEmpty);
     expect(args.command, isEmpty);
@@ -102,6 +103,118 @@ void main() {
   test('--jobs in either form', () {
     expect(runArgs(['run', 'a.dart', '--jobs', '1']).jobs, 1);
     expect(runArgs(['run', 'a.dart', '--jobs=6']).jobs, 6);
+  });
+
+  test('--shard in either form', () {
+    final shard = runArgs(['run', 'a.dart', '--shard', '2/4']).shard!;
+    expect((shard.index, shard.count), (2, 4));
+    expect(runArgs(['run', 'a.dart', '--shard=1/1']).shard!.label, '1/1');
+    expect(const RunArgs().shard, isNull);
+  });
+
+  for (final value in ['0/2', '3/2', '2', 'a/b', '1/2/3']) {
+    test('--shard $value is wrong usage', () {
+      expect(
+        () => parseArgs(['run', 'a.dart', '--shard=$value']),
+        throwsA(
+          isA<UsageError>().having(
+            (error) => error.message,
+            'message',
+            '--shard needs <index>/<count>, with an index from 1 to the '
+                'count ("$value")',
+          ),
+        ),
+      );
+    });
+  }
+
+  group('merge', () {
+    MergeArgs mergeArgs(List<String> argv) =>
+        (parseArgs(argv) as MergeCommandArgs).merge;
+
+    test('the parts, the report and the page', () {
+      final args = mergeArgs([
+        'merge',
+        'parts/1.json',
+        '--report',
+        'out.json',
+        'parts/2.json',
+        '--html=out.html',
+      ]);
+      expect(args.parts, ['parts/1.json', 'parts/2.json']);
+      expect(args.report, 'out.json');
+      expect(args.html, 'out.html');
+      expect(mergeArgs(['merge', 'a.json', '--report=b.json']).html, isNull);
+    });
+
+    for (final (name, argv, message) in [
+      ('no part', ['merge', '--report', 'out.json'], 'nothing to merge: give'),
+      (
+        'no report',
+        ['merge', 'a.json'],
+        'merge needs --report: where the report is written',
+      ),
+      (
+        'a test command',
+        ['merge', 'a.json', '--report', 'b.json', '--', 'dart', 'test'],
+        'merge runs no tests: "--" and a command do not belong',
+      ),
+      (
+        '-- alone',
+        ['merge', 'a.json', '--report', 'b.json', '--'],
+        'merge runs no tests',
+      ),
+      for (final option in [
+        '--root',
+        '--plan',
+        '--only',
+        '--jobs',
+        '--shard',
+        '--force',
+      ])
+        (
+          option,
+          ['merge', 'a.json', '--report', 'b.json', option, '1/2'],
+          'unknown option "$option" for merge',
+        ),
+      (
+        'an option of no command',
+        ['merge', 'a.json', '--report', 'b.json', '--fast'],
+        'unknown option "--fast" for merge',
+      ),
+      (
+        '--report twice',
+        ['merge', 'a.json', '--report', 'b.json', '--report=c.json'],
+        '--report is given twice',
+      ),
+      (
+        '--html without .html',
+        ['merge', 'a.json', '--report', 'b.json', '--html', 'c.json'],
+        '--html needs the path of an .html file ("c.json")',
+      ),
+    ]) {
+      test('$name is wrong usage', () {
+        expect(
+          () => parseArgs(argv),
+          throwsA(
+            isA<UsageError>().having(
+              (error) => error.message,
+              'message',
+              startsWith(message),
+            ),
+          ),
+        );
+      });
+    }
+
+    test('--help wins', () {
+      expect(parseArgs(['merge', '--help']), isA<HelpArgs>());
+    });
+  });
+
+  test('the help names both commands and --shard', () {
+    expect(help, contains('dart_mutant merge <part.json>... --report <path>'));
+    expect(help, contains('  --shard <i>/<n>  '));
   });
 
   for (final value in ['0', '-1', '+2', '0x10', 'two', '1.5']) {
