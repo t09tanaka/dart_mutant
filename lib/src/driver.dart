@@ -48,8 +48,10 @@ String importOf(String path, {required String directory, String? package}) {
         from[shared] == to[shared];
     shared++
   ) {}
+  // A list of a length, not a loop that counts: a mutant of the loop
+  // (`up--`) adds to the list until the memory of the machine is used up.
   return [
-    for (var up = shared; up < from.length; up++) '..',
+    ...List.filled(from.length - shared, '..'),
     ...to.skip(shared),
   ].join('/');
 }
