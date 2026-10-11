@@ -253,7 +253,7 @@ $ dart_mutant run --schemata lib/discount.dart
   lib/discount.dart: 18 of 22 mutant(s) built into one program, with "dart test --timeout 10s --reporter json test/dart_mutant_driver_test.dart" (4 do not compile)
   lib/discount.dart: 16 killed with the mutants built in; 2 not killed that way are measured the usual way
   lib/discount.dart: 2 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 2 at a time
-  lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (8.6s)
+  lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (8.7s)
 Survived:
   lib/discount.dart:7:30 NumberLiteral: 0 → 1
   lib/discount.dart:8:39 MethodExpression: round → ceil
@@ -303,7 +303,7 @@ Run the usual way, and counted in the line of the file (`12 cannot be built in (
 - A package that cannot be run from a working copy (a pub workspace, a `path:` dependency outside the package): `--schemata` then does nothing, and says so.
 - A file whose results are taken from the last run. Only its `Timeout`s are measured again, the usual way.
 
-In what was measured, between none and a third of the mutants of a file that compile could not be built in; over all files it was about one in seven. Nearly all of those were in top-level tables of constants.
+In what was measured, between none and a bit more than a third of the mutants of a file that compile could not be built in; over all files it was about one in eight. Nearly all of those were in top-level tables of constants.
 
 ### With `--jobs`
 
@@ -518,6 +518,23 @@ Measured with Dart 3.13 / Flutter 3.47 on a Mac with 12 logical processors (wher
 The gates of this package itself (see [Development](#the-gates-of-this-package)), on the same machine and as busy, measured when there were eleven of them: 11 files, about 1,700 mutants of which about 180 do not compile, about 35 minutes with `--jobs 3`. Nearly all of that is two files: their tests open an analysis session, or run two implementations side by side, and a mutant costs 5 to 8 seconds of a job there, against about a second and a half for the files with plain tests.
 
 In the workflow of this package (hosted runners of GitHub Actions, `--jobs 2`, one job per gate) the gate with the slowest tests, 544 mutants of which 483 compile, took 54 minutes as one job. Divided with `--shard` into four jobs, each took 9 to 14 minutes, and the whole workflow 16 minutes from start to end. The four parts had 119 to 122 test runs each and still differed that much: one test run cost between 4 and 7 seconds from job to job. The jobs together took a little less time than the one (46 minutes against 54 in these two runs), so dividing cost nothing there; for a file whose mutants take seconds in total, the checkout, `pub get` and the tests without a mutant of every part would outweigh what is gained.
+
+### With `--schemata`
+
+Measured on the same machine on a quieter day, with `--force`: one start of the test runner per mutant with one job and with the default three, and the mutants built in (`--schemata`, three jobs).
+
+| Package                                                   | Mutants   | `--jobs 1`    | `--jobs 3`    | `--jobs 3 --schemata` |
+| --------------------------------------------------------- | --------- | ------------- | ------------- | --------------------- |
+| [`example/`](example/) of this package, one file          | 22        | 23 s          | 14 s          | 12 s                  |
+| Pure Dart, five files                                     | about 340 | about 6 min   | about 2 min   | about 40 s            |
+| Flutter app, tests next to the files, five files          | about 145 | about 4 min   | about 2 min   | about 1.5 min         |
+| Flutter app, tests under `test/`, five files              | about 165 | about 6 min   | about 2.5 min | about 1.5 min         |
+| The gates of this package, 15 files                       | 2,785     | not measured  | 26 min        | about 10 min          |
+
+- **The statuses of every mutant were the same with and without `--schemata`** in all five, report against report: the same mutants, places and statuses, about 3,000 of them. Two of the five files of each Flutter app are widgets, tested with `testWidgets`.
+- Between 85% and 100% of the mutants that compile were built in.
+- No mutant was killed in a driver whose tests then failed without a mutant, so no file fell back as a whole. The mutants no test failed on in a driver survived their own run as well; the exception is one file of this package, where a driver was ended at a mutant that did not end and the mutants since its last check were measured again (they were killed).
+- **How much it gains depends on what the time was spent on.** The pure Dart files have fast tests and few survivors: nearly all of the time was starts of the test runner, and is gone. In the first Flutter app many of the mutants survive, and every survivor is run again on its own. In this package most of what is left is the mutants in tables of constants, which cannot be built in, on the two files whose tests take seconds.
 
 A second run without `--force` and without a change takes under a second, and makes no copy.
 

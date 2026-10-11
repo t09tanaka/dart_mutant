@@ -424,7 +424,9 @@ class DriverLog {
       }
       if (id != noMutant) {
         open.add(position);
-      } else if (failed.contains(position) || passed[position] != passed[0]) {
+      } else if (failed.contains(position) ||
+          passed[0] == null ||
+          passed[position] != passed[0]) {
         // A test failed, or other tests were run than the first time: not
         // all of them, or none.
         return DriverResult(

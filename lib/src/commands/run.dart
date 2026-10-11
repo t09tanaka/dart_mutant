@@ -906,6 +906,8 @@ Future<int> _locked(
             .where((index) => statuses[index] == compileError)
             .length;
         var said = reusable != null || refused == 0;
+        // The mutants a driver reported as killed, while that is believed.
+        var fromDriver = const <int>[];
         if (instead == null && built != null && built.ids.isEmpty) {
           io.out(
             '  $path: none of its ${built.left.length} mutant(s) that '
@@ -962,6 +964,7 @@ Future<int> _locked(
                 'run the usual way',
               );
             } else {
+              fromDriver = outcome.killed.keys.toList();
               for (final MapEntry(key: id, value: took)
                   in outcome.killed.entries) {
                 statuses[id] = killed;
@@ -1000,10 +1003,11 @@ Future<int> _locked(
                 break;
               }
               if (usual.exitCode != 0) {
-                for (final id in outcome.killed.keys) {
+                for (final id in fromDriver) {
                   statuses[id] = null;
                   milliseconds[id] = 0;
                 }
+                fromDriver = const [];
                 left = pending;
                 io.err(
                   '$executable: $path: the tests do not pass the usual way '
@@ -1051,6 +1055,19 @@ Future<int> _locked(
             break;
           }
           instead = outcome.inPlace;
+          if (instead != null && fromDriver.isNotEmpty) {
+            // The tests do not pass the usual way in a copy, where the
+            // driver ran: what it reported is measured again as well.
+            for (final id in fromDriver) {
+              statuses[id] = null;
+              milliseconds[id] = 0;
+            }
+            pending = [
+              for (final index in own)
+                if (statuses[index] == null) index,
+            ];
+            remaining = pending;
+          }
         }
         if (instead == null) {
           remaining = const [];

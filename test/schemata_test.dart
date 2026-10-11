@@ -557,36 +557,46 @@ void main() {
       ));
     });
 
-    test(
-      'a member of an extension is noted with its extension: the '
-      'choice between an int and a double takes it from another one',
-      () async {
-        const source = '''
-extension A on int { String get label => 'int'; }
-extension B on num { String get label => 'num'; }
-extension on List<int> { int operator -() => 0; int operator +(int a) => a; }
-extension C on Set<int> { int operator [](int a) => a; int operator ~() => 1; }
-String f(int a, int b) => (a * b).label;
-int g(List<int> a, Set<int> b) => -a + (a + 1) + b[2] + ~b;
+    test('a member of an extension is noted with its extension, which '
+        'can have no name: the choice between an int and a double takes it '
+        'from another one', () async {
+      const source = '''
+extension on int { String get label => 'int'; }
+extension on num { String get label => 'num'; }
+extension A on List<int> { int operator -() => 0; int operator +(int a) => a; }
+extension C on Set<int> {
+  int operator [](int a) => a;
+  int operator ~() => 1;
+  int get size => 0;
+  set size(int a) {}
+  int call() => 2;
+}
 class P {}
 extension D on P { P operator +(int a) => this; }
-void h(P p) { p++; }
+extension type E(int a) { int get twice => a * 2; }
+String f(int a, int b) => (a * b).label;
+int g(List<int> a, Set<int> b) => -a + (a + 1) + b[2] + ~b;
+void h(P p, Set<int> b, E e) { p++; b.size += b(); e.twice; }
 ''';
-        final found = (await types(source)).values.toSet();
-        expect(
-          found,
-          containsAll([
-            'String of A in package:fixture/a.dart',
-            'int of  in package:fixture/a.dart',
-            'int of C in package:fixture/a.dart',
-            'P of D in package:fixture/a.dart',
-          ]),
-        );
-        expect(found.where((type) => type.contains(' of B ')), isEmpty);
-        // A String either way, from another extension.
-        expect(await same(source, 'a * b', 'a / b'), (false, false));
-      },
-    );
+      final found = (await types(source)).values.toSet();
+      const library = 'in package:fixture/a.dart';
+      expect(
+        found,
+        containsAll([
+          'String of  on int $library',
+          'int of A on List<int> $library',
+          'int of C on Set<int> $library',
+          'P of D on P $library',
+          'int of E $library',
+          // What is read and what is written by `+=`.
+          'int of C on Set<int> $library of C on Set<int> $library',
+          'int by int Function() of C on Set<int> $library',
+        ]),
+      );
+      expect(found.where((type) => type.contains(' on num ')), isEmpty);
+      // A String either way, from another extension.
+      expect(await same(source, 'a * b', 'a / b'), (false, false));
+    });
 
     test('the node itself is compared where it is in the choice', () async {
       // The list has no type of its own: it takes the one that is asked

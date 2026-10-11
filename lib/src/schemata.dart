@@ -293,6 +293,20 @@ Places placesOf(
   return Places(wraps, reason);
 }
 
+/// Which extension [element] is a member of, when it is one: its name (an
+/// extension can have none), the type it is on, and its library.
+String _extensionOf(Element? element) {
+  final owner = element?.enclosingElement;
+  if (owner is ExtensionElement) {
+    return ' of ${owner.displayName} on ${owner.extendedType} '
+        'in ${owner.library.uri}';
+  }
+  // A member of an extension type is chosen by the static type as well.
+  return owner is ExtensionTypeElement
+      ? ' of ${owner.displayName} in ${owner.library.uri}'
+      : '';
+}
+
 class _Types extends GeneralizingAstVisitor<void> {
   final facts = <(int, int), String>{};
 
@@ -308,20 +322,25 @@ class _Types extends GeneralizingAstVisitor<void> {
     // receiver at run time, except for a member of an extension: that one
     // is chosen by the static type, and two extensions can give the same
     // type.
-    final element = switch (node) {
-      SimpleIdentifier() => node.element,
-      BinaryExpression() => node.element,
-      IndexExpression() => node.element,
-      PrefixExpression() => node.element,
-      PostfixExpression() => node.element,
-      _ => null,
+    final elements = switch (node) {
+      SimpleIdentifier() => [node.element],
+      BinaryExpression() => [node.element],
+      IndexExpression() => [node.element],
+      PrefixExpression() => [node.element],
+      PostfixExpression() => [node.element],
+      AssignmentExpression() => [
+        node.readElement,
+        node.writeElement,
+        node.element,
+      ],
+      FunctionExpressionInvocation() => [node.element],
+      _ => const <Element?>[],
     };
-    final extension = element?.enclosingElement;
     _note(
       node,
       '${node.staticType}'
       '${node is InvocationExpression ? ' by ${node.staticInvokeType}' : ''}'
-      '${extension is ExtensionElement ? ' of ${extension.displayName} in ${extension.library.uri}' : ''}',
+      '${elements.map(_extensionOf).join()}',
     );
     super.visitExpression(node);
   }

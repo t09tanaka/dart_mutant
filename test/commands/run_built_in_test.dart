@@ -10,6 +10,7 @@ import 'package:dart_mutant/dart_mutant.dart';
 import 'package:dart_mutant/src/args.dart';
 import 'package:dart_mutant/src/commands/merge.dart';
 import 'package:dart_mutant/src/commands/run.dart';
+import 'package:dart_mutant/src/mutation_run.dart';
 import 'package:dart_mutant/src/shard.dart';
 import 'package:test/test.dart';
 
@@ -268,7 +269,7 @@ dev_dependencies:
     required bool schemata,
     int jobs = 2,
     bool force = true,
-    Duration? limit,
+    Duration Function(Duration baseline)? limit,
     Shard? shard,
     String? reportPath,
     String? plan,
@@ -287,9 +288,7 @@ dev_dependencies:
         command: [Platform.resolvedExecutable, 'test'],
       ),
       Io(out: out.add, err: err.add),
-      limitOf: limit == null
-          ? (baseline) => baseline * 3 + const Duration(seconds: 20)
-          : (_) => limit,
+      limitOf: limit ?? processLimit,
     );
     expect(tree(), before, reason: 'the package was changed');
     expect(Directory('${dir.path}/$stateDir/work').existsSync(), isFalse);
@@ -324,9 +323,13 @@ dev_dependencies:
   test('a mutant that never ends does not hold the others: the driver is '
       'ended, the mutant is measured the usual way, and another driver runs '
       'the rest', () async {
-    // Long enough for a start of the test runner on a slow machine.
-    const limit = Duration(seconds: 12);
-    final builtIn = await mutate('lib/sum.dart', schemata: true, limit: limit);
+    // Whatever a run without a mutant takes on this machine, and a little:
+    // the loop that never ends is over that as well.
+    final builtIn = await mutate(
+      'lib/sum.dart',
+      schemata: true,
+      limit: (baseline) => baseline + const Duration(seconds: 8),
+    );
     expect(builtIn, [
       'ConditionalExpression false: Killed',
       'EqualityOperator <=: Killed',
