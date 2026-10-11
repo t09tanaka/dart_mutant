@@ -1,0 +1,120 @@
+// A little of everything the syntax mutators look at. Kept as .txt so that
+// it is not analyzed or formatted with the package.
+import 'dart:math' as math;
+
+part 'shapes.g.dart';
+
+@pragma('vm:prefer-inline')
+const greeting = 'hello';
+const limits = [1, 2, 3];
+
+enum Kind { circle, square }
+
+class Shape {
+  Shape(this.kind, this.size) : assert(size >= 0);
+
+  factory Shape.unit(Kind kind) {
+    return Shape(kind, 1);
+  }
+
+  final Kind kind;
+  final double size;
+  String? label;
+  int _reads = 0;
+
+  double get area {
+    _reads++;
+    if (kind == Kind.circle) {
+      return math.pi * size * size;
+    } else {
+      return size * size;
+    }
+  }
+
+  set name(String? value) {
+    label = value;
+  }
+
+  String describe({bool loud = false}) {
+    final name = label;
+    if (name == null) {
+      return 'unnamed';
+    }
+    final text = '$name: ${area.toStringAsFixed(2)}' ' units';
+    return loud ? text.toUpperCase() : text;
+  }
+
+  bool fits(Object other) {
+    if (other is! Shape) {
+      return false;
+    }
+    return other.size <= size && !(other.kind != kind || size < 0);
+  }
+}
+
+int total(List<int> values, {int? cap}) {
+  var sum = 0;
+  for (var index = 0; index < values.length; index++) {
+    sum += values[index];
+  }
+  var rounds = 0;
+  while (rounds < 3) {
+    rounds++;
+    --sum;
+  }
+  do {
+    sum -= 1;
+  } while (sum > 100);
+  sum *= 2;
+  sum ~/= 3;
+  cap ??= sum;
+  return -(sum > cap ? cap : sum) % 7;
+}
+
+Future<void> save(Shape shape, void Function(String) log) async {
+  log('saving');
+  await Future<void>.value();
+  StringBuffer();
+  Shape.unit(shape.kind);
+  log('saved ${shape.describe()}');
+  try {
+    shape.name = '';
+  } on StateError {
+    return;
+  } finally {
+    log("done");
+  }
+}
+
+List<String> names(List<Shape> shapes, bool all) => [
+  for (final shape in shapes)
+    if (all || shape.label != null) shape.label ?? 'none',
+  if (shapes.isEmpty) ...<String>[],
+];
+
+String pick(Object? value) => switch (value) {
+  final int number when number > 0 => 'positive',
+  String() => "text" r'raw',
+  _ => '''
+multi
+''',
+};
+
+Iterable<int> count(int to) sync* {
+  for (var value = 0; value < to; value++) {
+    yield value + 1;
+  }
+}
+
+dynamic loose(x) {
+  if (x case final int number) {
+    return number / 2;
+  }
+  assert(x != null, 'never');
+  void inner() {
+    return;
+  }
+
+  inner();
+  return null;
+}

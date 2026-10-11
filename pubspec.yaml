@@ -1,0 +1,42 @@
+name: dart_mutant
+description: >-
+  Mutation testing for Dart and Flutter. Mutants are made from the syntax
+  tree and from resolved types, and the ones that cannot compile are found
+  before a test is run.
+version: 0.1.0
+repository: https://github.com/t09tanaka/dart_mutant
+issue_tracker: https://github.com/t09tanaka/dart_mutant/issues
+topics:
+  - testing
+  - mutation-testing
+  - cli
+
+# A command-line tool: developed and tested on these two. (It starts on
+# Windows as well, see the Limitations in the README.)
+platforms:
+  linux:
+  macos:
+
+environment:
+  # The lower bound of analyzer 14.5.
+  sdk: ^3.11.0
+
+executables:
+  dart_mutant:
+
+dependencies:
+  # Narrow on purpose: this tool is run as a program of its own
+  # (`dart pub global activate dart_mutant`), not as a dependency of the
+  # package it mutates, so it never has to resolve next to an app's code
+  # generators.
+  analyzer: ^14.5.0
+  glob: ^2.1.0
+  path: ^1.9.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.27.0
+  # The gates of this package itself (test-gates.json). Only its `check`,
+  # `test`, `selfcheck` and `mutation-result` are used: the mutation test is
+  # run by this package.
+  test_gates: ^0.1.0

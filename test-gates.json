@@ -1,0 +1,109 @@
+{
+  "gates": [
+    {
+      "path": "lib/src/syntax_mutators.dart",
+      "decides": "Which mutants are made from the syntax tree of a file: the twelve mutators, their replacements, what is left alone, and the order that numbers them",
+      "impact": "A decision gets no mutant, so a test that does not check it is never found; or a number moves and the mutants no longer are the ones test_gates 0.1.0 made of the same file"
+    },
+    {
+      "path": "lib/src/typed_mutators.dart",
+      "decides": "Which mutants are made from resolved types: which member of which receiver is exchanged for which, where a number, a guard, a branch and a returned value are mutated, and where they are not",
+      "impact": "A member of a class of the project is taken for one of the SDK and mutated into something else, or a guard on null gets no mutant that compiles and its tests are never asked"
+    },
+    {
+      "path": "lib/src/mutant.dart",
+      "decides": "What a mutant does to a source, and the order of the mutants of a file",
+      "impact": "The file that is tested is not the mutant that is reported, or two mutants at one place change numbers between runs"
+    },
+    {
+      "path": "lib/src/mutation_run.dart",
+      "decides": "The status of a mutant from its test run, the test command and the time limit, the numbers of the mutants, the report, what a run with --only or --force keeps, and whether a result of the last run may be reused",
+      "impact": "A mutant the tests did not notice is reported as killed, a place in the report points at other code, or an outdated result is reused after the file, its tests or the command changed"
+    },
+    {
+      "path": "lib/src/html_report.dart",
+      "decides": "The page of --html: how the report is put into a script, what is escaped, where the viewer comes from, and which file counts as such a page",
+      "impact": "A source that holds </script> breaks the page or runs as markup in the reader's browser, or --html overwrites a file that is not a report"
+    },
+    {
+      "path": "lib/src/plan.dart",
+      "decides": "Whether a plan file is well formed, which paths are inside the package, where the test of a file is looked for, what is a glob, and which files --only selects",
+      "impact": "A path outside the package is mutated, a file is tested with the wrong tests, or a misspelt --only becomes a run on nothing"
+    },
+    {
+      "path": "lib/src/args.dart",
+      "decides": "Which command-line arguments belong to this tool, their values and defaults, and what is handed to the test command",
+      "impact": "A typo in an option is silently ignored, or --force and --only are dropped and a weaker run is taken for the full one"
+    },
+    {
+      "path": "lib/src/parallel.dart",
+      "decides": "How many test runs are started at a time, what is left out of a working copy, and whether a package can be run from a copy at all",
+      "impact": "The tests of a copy read the files of the package itself, where no mutant is, and every mutant survives or none does; or the default starves the machine and mutants time out"
+    },
+    {
+      "path": "lib/src/lock_state.dart",
+      "decides": "Whether a lock that could not be taken is held by another run, and who that run is",
+      "impact": "A second run starts in a package where one is at work and takes the mutant of the first for a leftover, or a file system without locks is reported as another run"
+    },
+    {
+      "path": "lib/src/json.dart",
+      "decides": "What counts as an object and as a list of strings when a plan, a report, a package configuration and the results of the last run are read",
+      "impact": "A file of another shape is read as valid and the run works from wrong data instead of refusing it"
+    },
+    {
+      "path": "lib/src/output.dart",
+      "decides": "How much of the output of a failed test run is shown",
+      "impact": "The lines that say why the tests fail without a mutant are cut off"
+    }
+  ],
+  "candidates": [
+    {
+      "path": "lib/src/version.dart",
+      "decides": "The version that is in the report and in the key of a reused result",
+      "blocker": "A constant. A test keeps it equal to pubspec.yaml"
+    },
+    {
+      "path": "lib/src/cli.dart",
+      "decides": "Which command runs, and the exit code for wrong usage and for a file that cannot be read or written",
+      "blocker": "Imports dart:io (FileSystemException) and the command, so it is not a pure module. The argument rules it uses are in args.dart, which is a gate"
+    },
+    {
+      "path": "lib/src/commands",
+      "decides": "The order of the steps of a run, what is printed, when a file is written and put back, and the exit code",
+      "blocker": "Reads and writes files, copies the package and starts processes. The decisions it acts on are taken in the gates; what is left is tested with a stand-in for the test runner in test/commands"
+    },
+    {
+      "path": "lib/src/io",
+      "decides": "The analysis session and which errors count against a mutant, how files are found, copied and locked, and how a process and its descendants are ended",
+      "blocker": "dart:io and the analyzer's session throughout. Tested against real files, a real analysis and real processes in test/ and test/commands"
+    }
+  ],
+  "settings": {
+    "lcov": {
+      "file": "coverage/lcov.info"
+    },
+    "gateCommand": [
+      "dart",
+      "test",
+      "--coverage-path=coverage/lcov.info",
+      "--branch-coverage",
+      "--exclude-tags",
+      "process"
+    ],
+    "spec": {
+      "rewrite": [
+        {
+          "from": "^lib/src/",
+          "to": "test/"
+        }
+      ]
+    },
+    "imports": {
+      "mode": "allowlist",
+      "allow": [
+        "package:analyzer",
+        "package:path"
+      ]
+    }
+  }
+}

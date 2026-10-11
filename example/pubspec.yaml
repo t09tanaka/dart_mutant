@@ -1,0 +1,12 @@
+name: dart_mutant_example
+description: A small package to try dart_mutant on.
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+
+dev_dependencies:
+  # analysis_options.yaml of dart_mutant, one directory up, applies here
+  # too, and it includes package:lints.
+  lints: ^6.0.0
+  test: ^1.27.0

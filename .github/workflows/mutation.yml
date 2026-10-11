@@ -1,0 +1,83 @@
+name: Mutation
+
+# The mutation test of the gates of this package (test-gates.json), run by
+# this package itself and judged by test_gates: tool/self_mutation.dart.
+#
+# It takes tens of minutes, so it is not part of every pull request: it runs
+# when main changes in a way that can change the result, and by hand
+# (Actions → Mutation → Run workflow, on any branch).
+on:
+  push:
+    branches: [main]
+    paths:
+      - lib/**
+      - bin/**
+      - test/**
+      - tool/**
+      - test-gates.json
+      - dart_test.yaml
+      - pubspec.yaml
+      - .github/workflows/mutation.yml
+  workflow_dispatch:
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # One job per gate. The list is read from test-gates.json, so a gate that
+  # is added there is run here.
+  gates:
+    name: List the gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      paths: ${{ steps.list.outputs.paths }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: echo "paths=$(jq -c '[.gates[].path]' test-gates.json)" >> "$GITHUB_OUTPUT"
+
+  gate:
+    name: ${{ matrix.gate }}
+    needs: gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: ${{ fromJSON(needs.gates.outputs.paths) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get
+      # Two test runs at a time, in working copies: the default would be one
+      # on a runner of this size.
+      - run: dart run tool/self_mutation.dart --force --jobs 2 --gate "$GATE"
+        env:
+          GATE: ${{ matrix.gate }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-report-${{ strategy.job-index }}
+          path: |
+            reports/mutation/mutation.json
+            reports/mutation/mutation.html
+          if-no-files-found: ignore
+
+  mutation:
+    # One check for all of them.
+    name: Mutation test of the gates
+    needs: gate
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: test "$RESULT" = success
+        env:
+          RESULT: ${{ needs.gate.result }}

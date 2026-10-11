@@ -1,0 +1,107 @@
+// Stands in for "dart test" / "flutter test" in the tests of `dart_mutant
+// run`. Kept as .txt so that it is not analyzed or formatted with the
+// package; the tests copy it into a temporary directory and run it there.
+//
+// Usage: dart fake_test.dart [options of the test runner] <test file>...
+//
+// A "test file" says what it checks in comments, one rule per line:
+//
+//   // file: lib/a.dart            the file under test
+//   // expect: a + 1               the file must contain this text, or the
+//                                  run fails (exit 1): the mutant is killed
+//   // compile-error-if: a / 1     with this text in the file the run fails
+//                                  the way a compile error does
+//   // hang-if: a * 1              with this text in the file the run never
+//                                  ends; its pid is written to "started"
+//   // hang-once-if: a * 1         the same, but only for the first run that
+//                                  gets here (needs --shared)
+//   // fail-below: /work/          the run fails when it is started in a
+//                                  directory whose path contains this text
+//   // expect-in: lib/b.dart::b()  another file must contain this text
+//   // install: /x/new::/y/old     the file /y/old gets the content of /x/new
+//                                  (absolute paths)
+//   // fail                        the run fails whatever the file holds
+//
+// Every run appends its arguments to "runs.log".
+//
+// With the option --shared=<directory> every run writes the directory it
+// was started in to a file "run.<pid>" of its own in that directory instead, and one that hangs
+// writes "started.<pid>": the runs of a parallel `dart_mutant run` are each
+// started in a copy of the package, at the same time.
+import 'dart:io';
+
+Future<void> main(List<String> arguments) async {
+  final shared = [
+    for (final argument in arguments)
+      if (argument.startsWith('--shared=')) argument.substring(9),
+  ].firstOrNull;
+  if (shared == null) {
+    File('runs.log').writeAsStringSync(
+      '${arguments.join(' ')}\n',
+      mode: FileMode.append,
+    );
+  } else {
+    File('$shared/run.$pid').writeAsStringSync(Directory.current.path);
+  }
+  for (final test in arguments.where((arg) => arg.endsWith('_test.dart'))) {
+    final rules = [
+      for (final line in File(test).readAsLinesSync())
+        if (line.startsWith('// ')) line.substring(3),
+    ];
+    String? value(String rule, String name) =>
+        rule.startsWith('$name: ') ? rule.substring(name.length + 2) : null;
+    final path = rules.map((rule) => value(rule, 'file')).nonNulls.first;
+    final content = File(path).readAsStringSync();
+    for (final rule in rules) {
+      if (rule == 'fail') {
+        stdout.writeln('00:00 +0 -1: Some tests failed.');
+        exit(1);
+      }
+      if (rule.startsWith('fail-below: ') &&
+          Directory.current.path.contains(rule.substring(12))) {
+        stdout.writeln('00:00 +0 -1: Some tests failed.');
+        exit(1);
+      }
+      final other = value(rule, 'expect-in')?.split('::');
+      if (other != null && !File(other[0]).readAsStringSync().contains(other[1])) {
+        stdout.writeln('Expected in ${other[0]}: ${other[1]}');
+        stdout.writeln('00:00 +0 -1: Some tests failed.');
+        exit(1);
+      }
+      final install = value(rule, 'install')?.split('::');
+      if (install != null) {
+        File(install[1]).writeAsBytesSync(File(install[0]).readAsBytesSync());
+      }
+      var hang = value(rule, 'hang-if');
+      final once = value(rule, 'hang-once-if');
+      if (once != null && content.contains(once)) {
+        try {
+          File('$shared/hung').createSync(exclusive: true);
+          hang = once;
+        } on FileSystemException {
+          // Another run was the first.
+        }
+      }
+      if (hang != null && content.contains(hang)) {
+        if (shared == null) {
+          File('started').writeAsStringSync('$pid');
+        } else {
+          File('$shared/started.$pid').writeAsStringSync('');
+        }
+        await Future<void>.delayed(const Duration(hours: 1));
+      }
+      final broken = value(rule, 'compile-error-if');
+      if (broken != null && content.contains(broken)) {
+        stderr.writeln("$path:1:1: Error: A value of type 'x' can't be y.");
+        exit(1);
+      }
+      final expected = value(rule, 'expect');
+      if (expected != null && !content.contains(expected)) {
+        stdout.writeln('Expected: $expected');
+        stdout.writeln('00:00 +0 -1: Some tests failed.');
+        exit(1);
+      }
+    }
+  }
+  stdout.writeln('00:00 +1: All tests passed!');
+}

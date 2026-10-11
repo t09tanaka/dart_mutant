@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "targets": [
+    {
+      "file": "lib/discount.dart",
+      "tests": ["test/discount_test.dart"]
+    }
+  ]
+}

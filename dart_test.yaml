@@ -1,0 +1,6 @@
+tags:
+  # The tests that start processes (test/commands): the command line as a
+  # whole, with a stand-in for the test runner. They are left out when the
+  # coverage of the gates is measured (test-gates.json), which has to come
+  # from the tests of the gates themselves.
+  process:

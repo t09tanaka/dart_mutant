@@ -1,0 +1,15 @@
+# What .gitignore leaves out (a .pubignore replaces it for `dart pub publish`).
+.dart_tool/
+.packages
+build/
+coverage/
+reports/
+pubspec.lock
+.worktrees/
+.DS_Store
+
+# For the development of this package only: its CI, its own gates
+# (test-gates.json) and the script that runs its own mutation test.
+.github/
+test-gates.json
+tool/
