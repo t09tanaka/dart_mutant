@@ -591,6 +591,38 @@ void main() {
     });
   });
 
+  group('DriverLog.memoryLimit', () {
+    int limitOf(int baseline) => baseline * 3 + 7;
+
+    test('compiling, declaring the tests without a mutant, and the first '
+        'run of them: no limit, and what is held then is what a run without '
+        'a mutant takes', () {
+      final found = DriverLog([-1, 4, 5, -1]);
+      expect(found.memoryLimit(100, limitOf), isNull);
+      found.declared('0\n');
+      expect(found.memoryLimit(200, limitOf), isNull);
+      found.declared('0\n1\n');
+      expect(found.memoryLimit(250, limitOf), 607);
+      found.declared('0\n1\n2\n3\n');
+      expect(found.memoryLimit(300, limitOf), 607);
+      // The tests are run: without a mutant first.
+      found.add(started(1, 'dart_mutant#0#-1 a', 500));
+      expect(found.memoryLimit(400, limitOf), isNull);
+      found.add(started(2, 'dart_mutant#1#4 a', 2500));
+      expect(found.memoryLimit(5000, limitOf), 1207);
+      expect(found.memoryLimit(9000, limitOf), 1207);
+      // Without a mutant again: with the limit of every later position.
+      found.add(started(3, 'dart_mutant#3#-1 a', 2500));
+      expect(found.memoryLimit(9000, limitOf), 1207);
+    });
+
+    test('nothing was measured before the first mutant: the limit of a run '
+        'that takes nothing', () {
+      final found = DriverLog([-1, 4, -1])..declared('1\n');
+      expect(found.memoryLimit(50, limitOf), 7);
+    });
+  });
+
   group('DriverLog.result', () {
     test('a driver that ran everything: killed is what a test failed on '
         'before the tests passed without a mutant', () {
@@ -749,6 +781,7 @@ void main() {
 
     test('ended at the tests without a mutant', () {
       const failure = 'the tests did not end without a mutant';
+      expect(notEndedWithoutMutant, failure);
       expect(log(run(0)).result.failure, failure);
       final later = log(run(3, failing: {1})).result;
       expect(later.failure, failure);
