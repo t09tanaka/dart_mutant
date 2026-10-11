@@ -27,8 +27,6 @@ dart_mutant run: FAILED (22 mutants / killed 16 / survived 2 / timeout 0 / compi
 
 ## Install
 
-> **Not on pub.dev yet.** Until it is, install it from git: `dart pub global activate --source git https://github.com/t09tanaka/dart_mutant`
-
 ```bash
 dart pub global activate dart_mutant
 ```
