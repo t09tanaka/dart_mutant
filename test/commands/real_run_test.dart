@@ -129,13 +129,12 @@ void main() {
       ],
     );
     expect(code, 1);
-    expect(out.sublist(out.length - 3), [
-      'Survived:',
-      '  lib/discount.dart:7:30 NumberLiteral: 0 → 1',
-      '  lib/discount.dart:8:39 MethodExpression: round → ceil',
-    ]);
+    expect(out, hasLength(2));
     expect(err, [
-      'dart_mutant: FAILED (22 mutants / killed 16 / survived 2 / timeout 0 '
+      'dart_mutant run: 2 surviving mutant(s)',
+      '  - lib/discount.dart:7:30 / NumberLiteral / 0 → 1 (Survived)',
+      '  - lib/discount.dart:8:39 / MethodExpression / round → ceil (Survived)',
+      'dart_mutant run: FAILED (22 mutants / killed 16 / survived 2 / timeout 0 '
           '/ compile error 4 (4 found before the run))',
     ]);
     expect([

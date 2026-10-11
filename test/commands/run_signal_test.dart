@@ -84,7 +84,7 @@ void main() {
       expect(await process.exitCode, code);
       expect(
         await stderrText,
-        contains('dart_mutant: interrupted. The files were put back'),
+        contains('dart_mutant run: interrupted. The files were put back'),
       );
       expect(package.read('lib/a.dart'), source);
       expect(package.file(backup).existsSync(), isFalse);
@@ -122,7 +122,7 @@ void main() {
       ...package.fake,
     ], package.io);
     expect(package.err, [
-      'dart_mutant: put back lib/a.dart, which an interrupted run left with '
+      'dart_mutant run: put back lib/a.dart, which an interrupted run left with '
           'a mutant in it',
     ]);
     expect(code, 0);
@@ -180,7 +180,7 @@ void main() {
         expect(
           await stderrText,
           contains(
-            'dart_mutant: interrupted. No file of the package was changed',
+            'dart_mutant run: interrupted. No file of the package was changed',
           ),
         );
         expect(package.read('lib/a.dart'), source);
@@ -252,7 +252,7 @@ void main() {
         expect(await second(jobs), 1);
         expect(package.err, [
           matches(
-            '^dart_mutant: another dart_mutant run is at work in this '
+            '^dart_mutant run: another dart_mutant run is at work in this '
             'package \\(pid ${process.pid}, started [^)]+\\)\\. Nothing was '
             'run or changed; ',
           ),
@@ -285,7 +285,7 @@ void main() {
       package.fakeTest('lib/a.dart', ['expect: x * y - x']);
       expect(await second(2), 0);
       expect(package.err, [
-        'dart_mutant: put back lib/a.dart, which an interrupted run left '
+        'dart_mutant run: put back lib/a.dart, which an interrupted run left '
             'with a mutant in it',
       ]);
       expect(package.read('lib/a.dart'), source);

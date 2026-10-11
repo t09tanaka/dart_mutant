@@ -185,7 +185,7 @@ void main() {
           r'^  lib/b\.dart: 1 of 2 mutants / killed 1 / survived 0 / '
           r'timeout 0 / compile error 0 \(\d+\.\ds\)$',
         ),
-        'dart_mutant: OK (shard 2/2: 1 of 2 mutants / killed 1 / survived 0 '
+        'dart_mutant run: OK (shard 2/2: 1 of 2 mutants / killed 1 / survived 0 '
             '/ timeout 0 / compile error 0)',
       ]);
       // One run without a mutant, and one for the one mutant of the part.
@@ -218,10 +218,11 @@ void main() {
       // `-` → `+` survives: the second mutant.
       expect(await mutate(['--shard', '1/2'], files: ['lib/b.dart']), 0);
       expect(await mutate(['--shard', '2/2'], files: ['lib/b.dart']), 1);
-      expect(package.out, contains('Survived:'));
+      expect(package.err, hasLength(3));
+      expect(package.err.first, 'dart_mutant run: 1 surviving mutant(s)');
       expect(
         package.err.last,
-        'dart_mutant: FAILED (shard 2/2: 1 of 2 mutants / killed 0 / '
+        'dart_mutant run: FAILED (shard 2/2: 1 of 2 mutants / killed 0 / '
         'survived 1 / timeout 0 / compile error 0)',
       );
     });
@@ -231,7 +232,7 @@ void main() {
       expect(await mutate(['--shard', '1/1', '--report', at('part.json')]), 1);
       expect(
         package.err.last,
-        startsWith('dart_mutant: FAILED (shard 1/1: 12 mutants / '),
+        startsWith('dart_mutant run: FAILED (shard 1/1: 12 mutants / '),
         reason: '${package.err}',
       );
       expect((read('part.json')['config']! as Json)['shard'], {
@@ -263,12 +264,12 @@ void main() {
         1,
       );
       expect(package.err, [
-        'The parts are not the parts of one run:',
+        'dart_mutant merge: the parts are not the parts of one run',
         '  - shard 1/2 (${at('p1.json')}): lib/b.dart could not be mutation '
             'tested',
         '  - shard 2/2 (${at('p2.json')}): lib/b.dart could not be mutation '
             'tested',
-        'dart_mutant: FAILED (nothing was merged)',
+        'dart_mutant merge: FAILED (nothing was merged)',
       ]);
       expect(File(at('m.json')).existsSync(), isFalse);
     });
@@ -383,7 +384,7 @@ void main() {
       expect(package.out, [
         '  lib/b.dart: 1 of 2 mutants / killed 1 / survived 0 / timeout 0 / '
             'compile error 0 (1 from the last run, 0.0s)',
-        'dart_mutant: OK (shard 1/2: 1 of 2 mutants / killed 1 / survived 0 '
+        'dart_mutant run: OK (shard 1/2: 1 of 2 mutants / killed 1 / survived 0 '
             '/ timeout 0 / compile error 0)',
       ]);
     });
@@ -429,33 +430,30 @@ void main() {
       package.err.clear();
     });
 
-    test(
-      'prints the files, the survivors and the totals, like a run',
-      () async {
-        expect(
-          await merge([
-            for (final name in names) at(name),
-            '--report',
-            at('out/merged.json'),
-          ]),
-          1,
-        );
-        expect(package.out, [
-          '  lib/a.dart: 10 mutants / killed 7 / survived 1 / timeout 0 / '
-              'compile error 2 (1 found before the run)',
-          '  lib/b.dart: 2 mutants / killed 1 / survived 1 / timeout 0 / '
-              'compile error 0',
-          'Survived:',
-          '  lib/a.dart:5:18 NumberLiteral: 2 → 1',
-          '  lib/b.dart:1:30 ArithmeticOperator: - → +',
-        ]);
-        expect(package.err, [
-          'dart_mutant: FAILED (3 part(s) merged: 12 mutants / killed 8 / '
-              'survived 2 / timeout 0 / compile error 2 (1 found before the '
-              'run))',
-        ]);
-      },
-    );
+    test('prints the files, the survivors and the totals, like a run', () async {
+      expect(
+        await merge([
+          for (final name in names) at(name),
+          '--report',
+          at('out/merged.json'),
+        ]),
+        1,
+      );
+      expect(package.out, [
+        '  lib/a.dart: 10 mutants / killed 7 / survived 1 / timeout 0 / '
+            'compile error 2 (1 found before the run)',
+        '  lib/b.dart: 2 mutants / killed 1 / survived 1 / timeout 0 / '
+            'compile error 0',
+      ]);
+      expect(package.err, [
+        'dart_mutant merge: 2 surviving mutant(s)',
+        '  - lib/a.dart:5:18 / NumberLiteral / 2 → 1 (Survived)',
+        '  - lib/b.dart:1:30 / ArithmeticOperator / - → + (Survived)',
+        'dart_mutant merge: FAILED (3 part(s) merged: 12 mutants / killed 8 / '
+            'survived 2 / timeout 0 / compile error 2 (1 found before the '
+            'run))',
+      ]);
+    });
 
     test('no survivor: exit code 0', () async {
       package.write('lib/c.dart', 'int c(int x) => x + 1;\n');
@@ -477,7 +475,7 @@ void main() {
       expect(package.err, isEmpty);
       expect(
         package.out.last,
-        startsWith('dart_mutant: OK (2 part(s) merged: '),
+        startsWith('dart_mutant merge: OK (2 part(s) merged: '),
       );
       expect(read('c.json')['config'], {'mutatorsVersion': 2});
     });
@@ -515,9 +513,9 @@ void main() {
       expect(await merge([at(names[0]), at(names[2]), ...arguments]), 1);
       expect(package.out, isEmpty);
       expect(package.err, [
-        'The parts are not the parts of one run:',
+        'dart_mutant merge: the parts are not the parts of one run',
         '  - shard 2/3 is missing',
-        'dart_mutant: FAILED (nothing was merged)',
+        'dart_mutant merge: FAILED (nothing was merged)',
       ]);
       expect(File(at('merged.json')).existsSync(), isFalse);
       expect(File(at('m.html')).existsSync(), isFalse);
@@ -538,10 +536,10 @@ void main() {
         1,
       );
       expect(package.err, [
-        'The parts are not the parts of one run:',
+        'dart_mutant merge: the parts are not the parts of one run',
         '  - shard 2/3 (${at('other.json')}): lib/a.dart is not the source '
             'shard 1/3 (${at(names[0])}) mutated',
-        'dart_mutant: FAILED (nothing was merged)',
+        'dart_mutant merge: FAILED (nothing was merged)',
       ]);
     });
 
@@ -552,10 +550,10 @@ void main() {
         1,
       );
       expect(package.err, [
-        'The parts are not the parts of one run:',
+        'dart_mutant merge: the parts are not the parts of one run',
         '  - ${at('text.json')} is not a part of a run: not a report that '
             'dart_mutant wrote with --shard',
-        'dart_mutant: FAILED (nothing was merged)',
+        'dart_mutant merge: FAILED (nothing was merged)',
       ]);
     });
 
