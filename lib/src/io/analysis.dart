@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:analyzer/dart/analysis/analysis_context.dart';
 import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
 import 'package:analyzer/dart/analysis/results.dart';
+import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/diagnostic/diagnostic.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:analyzer/file_system/overlay_file_system.dart';
@@ -229,6 +230,35 @@ class PackageAnalysis {
       }
     }
     return null;
+  }
+
+  /// [content] as the content of [path], resolved: its syntax tree with the
+  /// types, and why it does not compile as [compileErrorOf] says it (`null`
+  /// when it compiles as well as the file did).
+  Future<({CompilationUnit unit, String? error})> resolved(
+    String path,
+    String content,
+  ) async {
+    final file = _absolute(path);
+    final baseline = _baseline[path]!;
+    await _setContent(file, content);
+    final result = await _contextOf(file).currentSession.getResolvedUnit(file);
+    if (result is! ResolvedUnitResult) {
+      throw AnalysisUnavailable('cannot resolve $path');
+    }
+    final counts = <String, int>{};
+    String? error;
+    for (final diagnostic in result.diagnostics.where(_refusedByCompiler)) {
+      final count = counts.update(
+        diagnostic.message,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
+      if (count > (baseline[diagnostic.message] ?? 0)) {
+        error ??= diagnostic.message;
+      }
+    }
+    return (unit: result.unit, error: error);
   }
 
   /// Forgets the content given for [path]: the file is read from the disk

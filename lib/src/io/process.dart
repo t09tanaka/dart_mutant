@@ -159,12 +159,19 @@ const _signalGrace = Duration(milliseconds: 250);
 /// When [signals] reports a signal, the child is ended and the result carries
 /// the signal. When the command runs longer than [timeout], it is ended with
 /// everything it started and the result says so.
+///
+/// [onLine] gets every line of the standard output when it is there (with
+/// [capture]; the result then only has the standard error), and [stop] ends
+/// the command the way [timeout] does when it completes: for a caller that
+/// reads the output to decide how long the command may go on.
 Future<CommandResult> runCommand(
   List<String> command, {
   required String workingDirectory,
   required bool capture,
   required SignalWatch signals,
   Duration? timeout,
+  void Function(String line)? onLine,
+  Future<void>? stop,
 }) async {
   final Process process;
   try {
@@ -183,10 +190,12 @@ Future<CommandResult> runCommand(
   final drained = <Future<void>>[];
   if (capture) {
     for (final stream in [process.stdout, process.stderr]) {
+      final text = stream.transform(const Utf8Decoder(allowMalformed: true));
       drained.add(
-        stream
-            .transform(const Utf8Decoder(allowMalformed: true))
-            .forEach(output.write),
+        onLine == null || stream != process.stdout
+            ? text.forEach(output.write)
+            // Not kept: the caller reads it as it comes.
+            : text.transform(const LineSplitter()).forEach(onLine),
       );
     }
   }
@@ -199,14 +208,22 @@ Future<CommandResult> runCommand(
     process.exitCode,
     signals.received,
     limit.future,
+    ?stop?.then((_) => const _LimitReached()),
   ]);
   timer?.cancel();
+  // A caller that reads the lines must have got the last one before it is
+  // told that the command has ended.
+  Future<void> lines() => onLine == null
+      ? Future.value()
+      : Future.wait(drained).timeout(_drainGrace, onTimeout: () => const []);
   if (ended is ProcessSignal) {
     await _endTree(process, _killGrace);
+    await lines();
     return CommandResult(output: output.toString(), signal: ended);
   }
   if (ended is _LimitReached) {
     await _endTree(process, _limitGrace);
+    await lines();
     return CommandResult(output: output.toString(), timedOut: true);
   }
   await Future.any<Object?>([

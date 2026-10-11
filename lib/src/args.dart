@@ -1,5 +1,9 @@
 import 'shard.dart';
 
+/// Whether the mutants of a file are built into one program when neither
+/// `--schemata` nor `--no-schemata` is given.
+const schemataByDefault = false;
+
 /// The command line of `dart_mutant run`.
 class RunArgs {
   const RunArgs({
@@ -10,6 +14,7 @@ class RunArgs {
     this.force = false,
     this.jobs,
     this.shard,
+    this.schemata,
     this.only = const [],
     this.targets = const [],
     this.command = const [],
@@ -38,6 +43,10 @@ class RunArgs {
   /// `--shard`: the part of the mutants of each file that this run takes,
   /// when the run is divided.
   final Shard? shard;
+
+  /// `--schemata` (true) or `--no-schemata` (false): whether the mutants of
+  /// a file are built into one program. `null` when neither is given.
+  final bool? schemata;
 
   /// `--only`, once per file: the run is limited to these targets.
   final List<String> only;
@@ -146,6 +155,7 @@ ParsedArgs parseArgs(List<String> argv) {
   var force = false;
   int? jobs;
   Shard? shard;
+  bool? schemata;
   final only = <String>[];
   final targets = <String>[];
   final seen = <String>{};
@@ -167,6 +177,16 @@ ParsedArgs parseArgs(List<String> argv) {
         throw UsageError('--force takes no value');
       }
       force = true;
+      continue;
+    }
+    if (name == '--schemata' || name == '--no-schemata') {
+      if (inline) {
+        throw UsageError('$name takes no value');
+      }
+      if (schemata != null) {
+        throw UsageError('--schemata or --no-schemata is given twice');
+      }
+      schemata = name == '--schemata';
       continue;
     }
     if (!_valueOptions.contains(name)) {
@@ -250,6 +270,7 @@ ParsedArgs parseArgs(List<String> argv) {
       force: force,
       jobs: jobs,
       shard: shard,
+      schemata: schemata,
       only: only,
       targets: targets,
       command: command,
@@ -304,6 +325,14 @@ Options:
                    number modulo n), for a run that is divided over several
                    machines. The report is then a part: the other mutants
                    are in it as Pending.
+  --schemata       Experimental. Build the mutants of a file into one
+                   program and run its tests on all of them in one process,
+                   instead of one start of the test runner per mutant. Only
+                   "killed" is taken from that; every other mutant is run
+                   the usual way, and so is what cannot be built in. Always
+                   in working copies. "--reporter json" is appended to the
+                   test command as well.
+  --no-schemata    One start of the test runner per mutant (the default).
   -h, --help       This text.
   --version        The version of this tool.
   -- <command>     The command that runs test files (default:

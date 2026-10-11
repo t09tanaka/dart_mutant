@@ -1,0 +1,159 @@
+import 'package:dart_mutant/src/commands/built_in.dart';
+import 'package:dart_mutant/src/io/analysis.dart';
+import 'package:dart_mutant/src/mutant.dart';
+import 'package:dart_mutant/src/mutation_run.dart';
+import 'package:dart_mutant/src/schemata.dart';
+import 'package:dart_mutant/src/syntax_mutators.dart';
+import 'package:test/test.dart';
+
+import 'support/package_fixture.dart';
+
+void main() {
+  late PackageFixture package;
+  late PackageAnalysis analysis;
+
+  setUpAll(() {
+    package = PackageFixture();
+    analysis = PackageAnalysis.open(package.path);
+  });
+
+  tearDownAll(() async {
+    await analysis.dispose();
+    package.delete();
+  });
+
+  /// The mutants of [source] that compile, built into it. Returns what was
+  /// built, and for every mutant `Mutator original → replacement`.
+  Future<(BuiltIn, List<String>)> build(
+    String source, {
+    bool Function()? stopped,
+  }) async {
+    package.write('lib/a.dart', source);
+    final mutants = numbered(
+      source,
+      findSyntaxMutants(source).mutants,
+      await analysis.typedMutantsOf('lib/a.dart', source),
+    );
+    final compiling = <int>[];
+    for (final (id, mutant) in mutants.indexed) {
+      if (await analysis.compileErrorOf('lib/a.dart', mutant.applyTo(source)) ==
+          null) {
+        compiling.add(id);
+      }
+    }
+    final built = await buildIn(
+      analysis,
+      'lib/a.dart',
+      source,
+      mutants,
+      compiling,
+      stopped: stopped ?? () => false,
+    );
+    // What is built is a program.
+    expect(await analysis.compileErrorOf('lib/a.dart', built.content), isNull);
+    await analysis.release('lib/a.dart');
+    String shown(Mutant mutant) =>
+        '${mutant.mutator} '
+        '${source.substring(mutant.offset, mutant.end)} → '
+        '${mutant.replacement}';
+    return (built, [for (final mutant in mutants) shown(mutant)]);
+  }
+
+  test('a mutant is built in at the expression it changes, when the '
+      'program stays the one it was', () async {
+    final (built, mutants) = await build(
+      'int f(int a, int b) { return a - b; }\n',
+    );
+    expect(mutants, ['ArithmeticOperator - → +']);
+    expect(built.ids, [0]);
+    expect(built.left, isEmpty);
+    expect(built.reasons, '');
+    expect(
+      built.content,
+      'int f(int a, int b) { return '
+      '(\$dartMutantActive == 0 ? (a + b) : (a - b)); }\n'
+      '\nint \$dartMutantActive = -1;\n',
+    );
+  });
+
+  test('a mutant that changes an inferred type is built in around the '
+      'statements that see the type', () async {
+    final (built, mutants) = await build(
+      'Object f(num a, num b) { var c = a * b; return [c]; }\n',
+    );
+    final id = mutants.indexOf('ArithmeticOperator * → /');
+    expect(built.ids, contains(id));
+    expect(
+      built.content,
+      contains(
+        '{ if (\$dartMutantActive == $id) '
+        '{ { var c = a / b; return [c]; } } else { { var c = ',
+      ),
+    );
+  });
+
+  test('a guard on null is built in where the promotion still holds', () async {
+    final (built, mutants) = await build(
+      'int f(int? a) { if (a == null) { return 0; } return a + 1; }\n',
+    );
+    // In place they do not compile, so they are not asked for.
+    final refused = mutants.indexOf('EqualityOperator == → !=');
+    expect(built.ids, isNot(contains(refused)));
+    expect(built.left, isNot(contains(refused)));
+    final guard = mutants.indexWhere((m) => m.startsWith('GuardThrows '));
+    expect(built.ids, contains(guard));
+    expect(built.left, isEmpty);
+  });
+
+  test('a constant and an initializer that runs once are left out, with '
+      'the reason', () async {
+    final (built, mutants) = await build('''
+const names = ['a'];
+final count = names.length + 1;
+void g([String a = 'b']) {}
+int f(int a) => a + count;
+''');
+    expect(built.ids, [mutants.indexOf('ArithmeticOperator + → -', 3)]);
+    expect(built.left.values.toSet(), {runsOnce, changesProgram});
+    expect(
+      built.left[mutants.indexOf("StringLiteral 'b' → ''")],
+      changesProgram,
+    );
+    expect(
+      built.reasons,
+      matches(
+        '^\\d+ in an initializer that runs once in a process, 1 the '
+        'program does not compile, or has other types, with a choice '
+        r'there$',
+      ),
+    );
+  });
+
+  test('a run that is stopped builds nothing more', () async {
+    var asked = 0;
+    final (built, mutants) = await build(
+      'int f(int a, int b) => a - b + 1;\n',
+      stopped: () => ++asked > 1,
+    );
+    expect(mutants.length, greaterThan(2));
+    expect(built.ids, [0]);
+    expect(built.left, isEmpty);
+  });
+
+  test('resolved: the syntax tree with its types, and why a content does '
+      'not compile', () async {
+    const source = 'int f(int a) => a + 1;\n';
+    package.write('lib/a.dart', source);
+    await analysis.typedMutantsOf('lib/a.dart', source);
+    final fine = await analysis.resolved('lib/a.dart', source);
+    expect(fine.error, isNull);
+    expect(typesOf(fine.unit)[(16, 21)], 'int');
+    final broken = await analysis.resolved(
+      'lib/a.dart',
+      'int f(int a) => a + 1.5;\nint g() => "";\n',
+    );
+    expect(broken.error, contains("can't be returned"));
+    expect(typesOf(broken.unit)[(16, 23)], 'double');
+    await analysis.release('lib/a.dart');
+  });
+}
