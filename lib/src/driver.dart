@@ -88,7 +88,7 @@ String? driverObstacle(String test) {
     return 'has no main()';
   }
   final main = mains.first;
-  if (main.parameters!.parameters.isNotEmpty) {
+  if (main.parameters?.parameters.isEmpty != true) {
     return 'has a main() that takes arguments';
   }
   if (main.body.isAsynchronous || main.body.isGenerator) {
@@ -253,6 +253,11 @@ class DriverLog {
   final List<int> plan;
 
   final _positionOfTest = <int, int>{};
+  final _nameOfTest = <int, String>{};
+
+  /// The first test that failed without a mutant at work, as the test files
+  /// call it.
+  String? failedWithoutMutant;
 
   /// The positions of which a test has started, and when the first one did
   /// (milliseconds since the start of the test runner).
@@ -308,12 +313,13 @@ class DriverLog {
         final test = asObject(event['test']);
         final id = test?['id'];
         final name = test?['name'];
-        final match = name is String ? _group.firstMatch(name) : null;
+        final match = _group.firstMatch(name is String ? name : '');
         if (id is int && match != null) {
           final position = int.parse(match.group(1)!);
           if (position < plan.length &&
               plan[position] == int.parse(match.group(2)!)) {
             _positionOfTest[id] = position;
+            _nameOfTest[id] = match.input.substring(match.end);
             started.putIfAbsent(position, () => time);
           }
         }
@@ -325,8 +331,11 @@ class DriverLog {
         if (position == null) {
           // The test that loads the file, or one outside every group.
           loadFailed = true;
-        } else if (failed.add(position) && plan[position] != noMutant) {
-          return plan[position];
+        } else if (failed.add(position)) {
+          if (plan[position] != noMutant) {
+            return plan[position];
+          }
+          failedWithoutMutant ??= _nameOfTest[event['testID']];
         }
       case 'done':
         done = true;
@@ -355,19 +364,29 @@ class DriverLog {
   ///
   /// The first run of the tests, without a mutant, takes the place of the
   /// run without a mutant of the usual way, and what comes before it is the
-  /// compiler's time: they get [first]. Every later position gets what
-  /// [limitOf] makes of the time of that first run; declaring the tests of
-  /// one, which is done before any test runs, gets what it makes of nothing.
+  /// compiler's time and the test runner's: they get [first]. Every later
+  /// position gets what [limitOf] makes of the time of that first run;
+  /// declaring the tests of one, which is done before any test runs, gets
+  /// what it makes of nothing.
   Duration limit(
     Duration Function(Duration baseline) limitOf, {
     required Duration first,
   }) {
     if (started.isEmpty) {
-      return (declaring ?? 0) > 0 ? limitOf(Duration.zero) : first;
+      // After the last one the test runner takes the declared tests over,
+      // which is its time as well.
+      final at = declaring ?? 0;
+      return at > 0 && at < plan.length - 1 ? limitOf(Duration.zero) : first;
     }
     return started.length < 2
         ? first
         : limitOf(Duration(milliseconds: millisecondsOf(0)));
+  }
+
+  /// Takes it that the driver was ended before it had run everything: a
+  /// test runner that is told to end still says that it is done.
+  void ended() {
+    done = false;
   }
 
   /// What is known when the driver has ended, or was ended.
@@ -398,10 +417,11 @@ class DriverLog {
       if (id != noMutant) {
         open.add(position);
       } else if (!started.containsKey(position) || failed.contains(position)) {
-        return const DriverResult(
+        return DriverResult(
           failure:
               'the tests do not pass without a mutant when they are run '
-              'again in one process',
+              'more than once in one process'
+              '${failedWithoutMutant == null ? '' : ' ("$failedWithoutMutant" fails)'}',
         );
       } else {
         for (final passed in open) {

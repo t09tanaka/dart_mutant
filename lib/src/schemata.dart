@@ -190,15 +190,17 @@ bool _declares(Statement node) =>
     node is FunctionDeclarationStatement ||
     node is PatternVariableDeclarationStatement;
 
-/// True for a name that is not a value of its own: the `b` of `a.b` and of
-/// `a.b()`, the `a` of a named argument `a: 1`.
-bool _isName(Expression node) {
+/// True for an expression that is not a value of its own: the `b` of `a.b`
+/// and of `a.b()`, the `a` of a named argument `a: 1`, and the parameters
+/// and the body of a function that is declared with a name.
+bool _isNoValue(Expression node) {
   final parent = node.parent;
   return node is SimpleIdentifier &&
-      (parent is MethodInvocation && parent.methodName == node ||
-          parent is PropertyAccess && parent.propertyName == node ||
-          parent is PrefixedIdentifier ||
-          parent is Label);
+          (parent is MethodInvocation && parent.methodName == node ||
+              parent is PropertyAccess && parent.propertyName == node ||
+              parent is PrefixedIdentifier ||
+              parent is Label) ||
+      node is FunctionExpression && parent is FunctionDeclaration;
 }
 
 /// True when [node] is in the initializer of a top-level variable or of a
@@ -225,7 +227,7 @@ bool _runsOnce(AstNode node) {
 /// expression or a statement with the mutant in it as well ([mutated] is the
 /// syntax tree of the mutated source), the smallest first.
 ///
-/// Left out: a statement that declares a name, a name that is no value, a
+/// Left out: a statement that declares a name, what is no value, a
 /// constant, what runs once in a process, and what is longer than
 /// [longestAlternative].
 Places placesOf(
@@ -248,7 +250,7 @@ Places placesOf(
   var reason = noPlace;
   for (final node in _around(unit, mutant.offset, mutant.end)) {
     final statement = node is Statement && !_declares(node);
-    final expression = node is Expression && !_isName(node);
+    final expression = node is Expression && !_isNoValue(node);
     if (!statement && !expression ||
         !after.contains((
           node.offset,

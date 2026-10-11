@@ -161,9 +161,9 @@ const _signalGrace = Duration(milliseconds: 250);
 /// everything it started and the result says so.
 ///
 /// [onLine] gets every line of the standard output when it is there (with
-/// [capture]), and [stop] ends the command the way [timeout] does when it
-/// completes: for a caller that reads the output to decide how long the
-/// command may go on.
+/// [capture]; the result then only has the standard error), and [stop] ends
+/// the command the way [timeout] does when it completes: for a caller that
+/// reads the output to decide how long the command may go on.
 Future<CommandResult> runCommand(
   List<String> command, {
   required String workingDirectory,
@@ -194,10 +194,8 @@ Future<CommandResult> runCommand(
       drained.add(
         onLine == null || stream != process.stdout
             ? text.forEach(output.write)
-            : text.transform(const LineSplitter()).forEach((line) {
-                output.writeln(line);
-                onLine(line);
-              }),
+            // Not kept: the caller reads it as it comes.
+            : text.transform(const LineSplitter()).forEach(onLine),
       );
     }
   }

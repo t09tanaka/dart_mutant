@@ -277,8 +277,11 @@ Future<BuiltInRun> runBuiltIn({
               'cannot start "${command.join(' ')}" (${result.startError})';
           return;
         }
-        if (declared.existsSync()) {
+        if (log.started.isEmpty && declared.existsSync()) {
           log.declared(declared.readAsStringSync());
+        }
+        if (result.timedOut) {
+          log.ended();
         }
         final found = log.result;
         if (found.failure != null) {
