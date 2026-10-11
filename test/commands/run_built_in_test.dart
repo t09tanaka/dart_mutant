@@ -142,7 +142,8 @@ void main() {
 ''';
 
 /// `dart_mutant run --schemata` against the real test runner, on a package
-/// in a temporary directory, next to the same run without it.
+/// in a temporary directory. The statuses are those of a run without the
+/// option.
 void main() {
   late Directory dir;
   late String slowLog;
@@ -215,6 +216,7 @@ dev_dependencies:
     String file, {
     required bool schemata,
     int jobs = 2,
+    bool force = true,
     Duration? limit,
   }) async {
     final before = tree();
@@ -222,7 +224,7 @@ dev_dependencies:
       RunArgs(
         root: dir.path,
         targets: [file],
-        force: true,
+        force: force,
         jobs: jobs,
         schemata: schemata,
         command: [Platform.resolvedExecutable, 'test'],
@@ -264,11 +266,9 @@ dev_dependencies:
   test('a mutant that never ends does not hold the others: the driver is '
       'ended, the mutant is measured the usual way, and another driver runs '
       'the rest', () async {
-    const limit = Duration(seconds: 6);
-    final usual = await mutate('lib/sum.dart', schemata: false, limit: limit);
-    out.clear();
+    // Long enough for a start of the test runner on a slow machine.
+    const limit = Duration(seconds: 12);
     final builtIn = await mutate('lib/sum.dart', schemata: true, limit: limit);
-    expect(builtIn, usual);
     expect(builtIn, [
       'ConditionalExpression false: Killed',
       'EqualityOperator <=: Killed',
@@ -294,8 +294,8 @@ dev_dependencies:
       builtInLine('lib/sum.dart'),
       matches(
         r'^  lib/sum\.dart: \d+ killed with the mutants built in; \d+ not '
-        r'killed that way are measured one at a time; 1 did not end, and '
-        r'the driver was started again$',
+        r'killed that way are measured one at a time; 1 of them did not '
+        r'end, and the driver was ended$',
       ),
     );
     expect(err.where((line) => !line.contains('FAILED')), isEmpty);
@@ -303,10 +303,12 @@ dev_dependencies:
 
   test('tests that pass only once in a process: nothing of the driver is '
       'used', () async {
-    final usual = await mutate('lib/next.dart', schemata: false);
     final builtIn = await mutate('lib/next.dart', schemata: true);
-    expect(builtIn, usual);
-    expect(builtIn, contains('ArithmeticOperator -: Killed'));
+    expect(builtIn, [
+      'ArithmeticOperator -: Killed',
+      'NumberLiteral 2: Killed',
+      'NumberLiteral 0: Killed',
+    ]);
     expect(
       err,
       contains(
@@ -316,6 +318,22 @@ dev_dependencies:
       ),
     );
     expect(builtInLine('lib/next.dart'), isEmpty);
+  });
+
+  test('without the option the statuses are the same', () async {
+    expect(await mutate('lib/sign.dart', schemata: false), [
+      'ConditionalExpression true: Killed',
+      'ConditionalExpression false: Killed',
+      'EqualityOperator <=: Survived',
+      'EqualityOperator >=: Killed',
+      'UnaryOperator 1: Killed',
+      'NumberLiteral 1: Survived',
+      'NumberLiteral 2: Killed',
+      'NumberLiteral 0: Killed',
+      'NumberLiteral 2: Killed',
+      'NumberLiteral 0: Killed',
+    ]);
+    expect(out.where((line) => line.contains('built in')), isEmpty);
   });
 
   test('the tests of a mutant are not run after the first one that '
@@ -415,6 +433,18 @@ dev_dependencies:
       builtInLine('lib/cases.dart'),
       startsWith('  lib/cases.dart: 2 killed with the mutants built in; 5 '),
     );
+
+    // The results are those of any run: the next one takes them over.
+    out.clear();
+    expect(
+      await mutate('lib/cases.dart', schemata: true, force: false),
+      builtIn,
+    );
+    expect(out, [
+      matches(r'^  lib/cases\.dart: 7 mutants / .* \(7 from the last run, '),
+      'Survived:',
+      ...List.filled(5, anything),
+    ]);
   });
 
   test('a mutant the driver does not see killed is measured again: what a '

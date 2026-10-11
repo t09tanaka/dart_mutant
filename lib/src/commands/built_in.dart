@@ -140,7 +140,7 @@ class BuiltInRun {
     this.killed = const {},
     this.failure,
     this.aborted,
-    this.again = 0,
+    this.unended = 0,
   });
 
   /// The mutants that are `Killed`, with the milliseconds of their tests.
@@ -152,9 +152,9 @@ class BuiltInRun {
   /// Why the whole run has to stop.
   final String? aborted;
 
-  /// How often a driver was ended because a mutant did not end, and another
-  /// one started for the rest.
-  final int again;
+  /// How many drivers were ended because a mutant did not end within its
+  /// limit.
+  final int unended;
 }
 
 String _inPackage(String root, String relativePath) =>
@@ -194,7 +194,7 @@ Future<BuiltInRun> runBuiltIn({
   final killed = <int, int>{};
   String? failure;
   String? aborted;
-  var again = 0;
+  var unended = 0;
 
   Future<void> worker(String copy, List<int> share) async {
     final state = Directory(p.join(copy, '.dart_tool', 'dart_mutant_driver'));
@@ -282,6 +282,7 @@ Future<BuiltInRun> runBuiltIn({
         }
         if (result.timedOut) {
           log.ended();
+          unended++;
         }
         final found = log.result;
         if (found.failure != null) {
@@ -290,9 +291,6 @@ Future<BuiltInRun> runBuiltIn({
         }
         killed.addAll(found.killed);
         rest = found.rest;
-        if (rest.isNotEmpty) {
-          again++;
-        }
       }
     } on FileSystemException catch (error) {
       failure ??=
@@ -324,6 +322,6 @@ Future<BuiltInRun> runBuiltIn({
     killed: failure == null && aborted == null ? killed : const {},
     failure: failure,
     aborted: aborted,
-    again: again,
+    unended: unended,
   );
 }

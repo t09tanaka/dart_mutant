@@ -42,3 +42,12 @@
   system, so a killed run leaves none behind.
 - The results of a file are reused while the file, its tests and the test
   command are the same (`--force` runs everything).
+- `--schemata` (experimental, not the default): the mutants of a file are
+  built into the file behind a variable, and its tests are run on all of
+  them in one process, by a test file that calls the tests once per mutant.
+  The test runner starts once per file instead of once per mutant. Only
+  `Killed` is taken from that run, and only while the tests pass without a
+  mutant before and after; a mutant no test failed on, one that did not
+  end, and what cannot be built in (a constant, an initializer that runs
+  once in a process, tests the driver cannot call) are run the usual way.
+  Always in working copies. `--no-schemata` is the default, said out loud.

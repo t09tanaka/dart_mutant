@@ -722,7 +722,8 @@ Future<int> _locked(
     if (obstacle != null) {
       io.err(
         '$executable: $obstacle, so it cannot be run from working copies. '
-        'The mutants are run one at a time, in place (--jobs 1)',
+        'The mutants are run one at a time, in place (--jobs 1)'
+        '${schemata ? ', and are not built into one program' : ''}',
       );
       jobs = 1;
       schemata = false;
@@ -935,6 +936,12 @@ Future<int> _locked(
         }
         final refused = statuses.where((s) => s == compileError).length;
         var said = reusable != null || refused == 0;
+        if (instead == null && built != null && built.ids.isEmpty) {
+          io.out(
+            '  $path: none of its ${built.left.length} mutant(s) that '
+            'compile can be built in (${built.reasons})',
+          );
+        }
         if (instead == null && built != null && built.ids.isNotEmpty) {
           // One driver has to start, compile and run the tests without a
           // mutant before its first mutant: more of them only pay when
@@ -999,8 +1006,8 @@ Future<int> _locked(
                           '(${built.reasons})'}'
                 '${unsettled == 0 ? '' : '; $unsettled not killed that way '
                           'are measured one at a time'}'
-                '${outcome.again == 0 ? '' : '; ${outcome.again} did not '
-                          'end, and the driver was started again'}',
+                '${outcome.unended == 0 ? '' : '; ${outcome.unended} of '
+                          'them did not end, and the driver was ended'}',
               );
             }
             pending = [
