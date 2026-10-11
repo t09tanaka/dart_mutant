@@ -55,7 +55,7 @@ void main() {
     bool force = true,
   }) => run([
     'run',
-    '--root',
+    '--dir',
     package.path,
     '--jobs',
     '$jobs',
@@ -127,7 +127,7 @@ void main() {
       expect(package.out.first, contains('", $workers at a time ('));
       // One run without a mutant in every copy, and one per mutant.
       expect(package.sharedRuns, hasLength(workers + mutants));
-      expect(package.err.last, startsWith('dart_mutant: FAILED'));
+      expect(package.err.last, startsWith('dart_mutant run: FAILED'));
     }
   });
 
@@ -206,7 +206,11 @@ void main() {
         'expect-in: lib/a.dart::$line',
     ]);
     expect(await mutate(2, arguments: ['lib/a.dart', 'lib/b.dart']), 1);
-    expect(package.err, [startsWith('dart_mutant: FAILED')]);
+    expect(package.err, [
+      'dart_mutant run: 1 surviving mutant(s)',
+      startsWith('  - lib/a.dart:'),
+      startsWith('dart_mutant run: FAILED'),
+    ]);
     expect(package.out[2], contains('lib/b.dart: 2 of 2 mutant(s)'));
     expect(package.out[2], contains(', 2 at a time'));
     expect(statuses('lib/b.dart'), ['Killed', 'Killed']);
@@ -234,7 +238,7 @@ void main() {
   group('memory limit', () {
     Future<int> heavy(int jobs) => runMutation(
       RunArgs(
-        root: package.path,
+        dir: package.path,
         targets: const ['lib/b.dart'],
         command: package.sharedFake,
         jobs: jobs,
@@ -256,41 +260,37 @@ void main() {
 
     setUp(() => package.write('lib/b.dart', sourceB));
 
-    test(
-      'a mutant that takes more memory than the limit is ended, run '
-      'again alone, and is a Timeout when it is ended then as well',
-      () async {
-        package.fakeTest('lib/b.dart', ['grow-if: x / y', 'expect: x * y - x']);
-        expect(await heavy(2), 0);
-        expect(package.out, [
-          startsWith('  lib/b.dart: 2 of 2 mutant(s) with '),
-          '  lib/b.dart: 1 mutant(s) used more than 200 MB of memory, were '
-              'ended and run again alone: 1 reached a limit then as well '
-              '(Timeout)',
-          startsWith(
-            '  lib/b.dart: 2 mutants / killed 1 / survived 0 / timeout 1 '
-            '/ compile error 0 (',
-          ),
-          'dart_mutant: OK (2 mutants / killed 1 / survived 0 / timeout 1 / '
-              'compile error 0)',
-        ]);
-        expect(statuses('lib/b.dart'), ['Timeout', 'Killed']);
-        expect(reasons(), [
-          'the test run used more than 200 MB of memory and was ended',
-          null,
-        ]);
-        // Two runs without a mutant, two mutants, and one of them again.
-        expect(package.sharedRuns, hasLength(5));
-        // Both runs that took the memory were ended.
-        final ended = package.sharedHeavy;
-        expect(ended, hasLength(2));
-        for (final pid in ended) {
-          expect(Process.runSync('kill', ['-0', pid]).exitCode, isNot(0));
-        }
-        expectPackageUntouched();
-      },
-      testOn: '!windows',
-    );
+    test('a mutant that takes more memory than the limit is ended, run '
+        'again alone, and is a Timeout when it is ended then as well', () async {
+      package.fakeTest('lib/b.dart', ['grow-if: x / y', 'expect: x * y - x']);
+      expect(await heavy(2), 0);
+      expect(package.out, [
+        startsWith('  lib/b.dart: 2 of 2 mutant(s) with '),
+        '  lib/b.dart: 1 mutant(s) used more than 200 MB of memory, were '
+            'ended and run again alone: 1 reached a limit then as well '
+            '(Timeout)',
+        startsWith(
+          '  lib/b.dart: 2 mutants / killed 1 / survived 0 / timeout 1 '
+          '/ compile error 0 (',
+        ),
+        'dart_mutant run: OK (2 mutants / killed 1 / survived 0 / timeout 1 / '
+            'compile error 0)',
+      ]);
+      expect(statuses('lib/b.dart'), ['Timeout', 'Killed']);
+      expect(reasons(), [
+        'the test run used more than 200 MB of memory and was ended',
+        null,
+      ]);
+      // Two runs without a mutant, two mutants, and one of them again.
+      expect(package.sharedRuns, hasLength(5));
+      // Both runs that took the memory were ended.
+      final ended = package.sharedHeavy;
+      expect(ended, hasLength(2));
+      for (final pid in ended) {
+        expect(Process.runSync('kill', ['-0', pid]).exitCode, isNot(0));
+      }
+      expectPackageUntouched();
+    }, testOn: '!windows');
 
     test('a mutant that only took that much once is not a Timeout: the '
         'second run decides, and a survivor it finds fails the run', () async {
@@ -310,7 +310,7 @@ void main() {
   group('time limit', () {
     Future<int> quick(int jobs) => runMutation(
       RunArgs(
-        root: package.path,
+        dir: package.path,
         targets: const ['lib/b.dart'],
         command: package.sharedFake,
         jobs: jobs,
@@ -336,7 +336,7 @@ void main() {
           '  lib/b.dart: 2 mutants / killed 1 / survived 0 / timeout 1 '
           '/ compile error 0 (',
         ),
-        'dart_mutant: OK (2 mutants / killed 1 / survived 0 / timeout 1 / '
+        'dart_mutant run: OK (2 mutants / killed 1 / survived 0 / timeout 1 / '
             'compile error 0)',
       ]);
       expect(statuses('lib/b.dart'), ['Timeout', 'Killed']);
@@ -385,7 +385,7 @@ void main() {
       expect(await mutate(2), 1);
       expect(
         package.err.first,
-        'dart_mutant: lib/a.dart has tests that fail in a working copy '
+        'dart_mutant run: lib/a.dart has tests that fail in a working copy '
         '(exit 1); its mutants are run one at a time, in place',
       );
       expect(report(), inPlace);
@@ -397,12 +397,12 @@ void main() {
       package.fakeTest('lib/a.dart', ['fail']);
       expect(await mutate(2), 1);
       expect(package.err, [
-        'dart_mutant: lib/a.dart has tests that fail in a working copy '
+        'dart_mutant run: lib/a.dart has tests that fail in a working copy '
             '(exit 1); its mutants are run one at a time, in place',
         contains('Some tests failed.'),
-        'Could not be mutation tested:',
+        'dart_mutant run: 1 file(s) could not be mutation tested',
         startsWith('  - lib/a.dart: the tests fail without a mutant (exit 1'),
-        startsWith('dart_mutant: FAILED (0 mutants '),
+        startsWith('dart_mutant run: FAILED (0 mutants '),
       ]);
       expect(package.read('lib/a.dart'), source);
     });
@@ -421,7 +421,7 @@ void main() {
       expect(await mutate(2), 1);
       expect(
         package.err.first,
-        'dart_mutant: the dependency "shared" is at a path relative to the '
+        'dart_mutant run: the dependency "shared" is at a path relative to the '
         'package (../../shared), so it cannot be run from working copies. '
         'The mutants are run one at a time, in place (--jobs 1)',
       );
@@ -441,7 +441,7 @@ void main() {
       expect(
         package.err,
         contains(
-          'dart_mutant: lib/b.dart is behind a symbolic link; its mutants '
+          'dart_mutant run: lib/b.dart is behind a symbolic link; its mutants '
           'are run one at a time, in place',
         ),
       );
@@ -481,7 +481,7 @@ void main() {
       expect(
         package.err.first,
         matches(
-          r'^dart_mutant: another dart_mutant run is at work in this package '
+          r'^dart_mutant run: another dart_mutant run is at work in this package '
           r'\(pid \d+, started \d{4}-\d\d-\d\dT[\d:.]+Z\)\. Nothing was run '
           r'or changed; run again when it has ended \(the lock is '
           r'\.dart_tool/dart_mutant/lock\)$',

@@ -4,11 +4,13 @@ import 'args.dart';
 import 'commands/merge.dart';
 import 'commands/run.dart';
 import 'output.dart';
+import 'plan.dart';
 import 'version.dart';
 
 /// Runs the command line and returns the exit code: 0 when no mutant
 /// survived, 1 when one did or something could not be run, 2 for wrong
-/// usage, 130 / 143 / 129 when interrupted.
+/// usage or a plan file that cannot be used, 130 / 143 / 129 when
+/// interrupted.
 Future<int> run(List<String> arguments, Io io) async {
   try {
     switch (parseArgs(arguments)) {
@@ -24,8 +26,12 @@ Future<int> run(List<String> arguments, Io io) async {
         return runMerge(args, io);
     }
   } on UsageError catch (error) {
+    io.err('$executable: ${error.message}\n');
+    io.err(help);
+    return 2;
+  } on PlanError catch (error) {
+    // Not the command line: the help would not say what is wrong.
     io.err('$executable: ${error.message}');
-    io.err('Run "$executable --help" for the usage.');
     return 2;
   } on FileSystemException catch (error) {
     // A report or a state file that cannot be deleted, read or written. The

@@ -490,7 +490,7 @@ void main() {
         survivorLines({
           'lib/b.dart': runOf(const [MutantResult(padded, survived)]),
         }),
-        ['  lib/b.dart:1:16 BlockStatement: x + 1; → {}'],
+        ['  - lib/b.dart:1:16 / BlockStatement / x + 1; → {} (Survived)'],
       );
     });
 
@@ -534,14 +534,17 @@ void main() {
     test('survivorLines: the place, the mutator and the change, on one '
         'line', () {
       expect(survivorLines({'lib/a.dart': run}), [
-        '  lib/a.dart:2:7 ArithmeticOperator: + → -',
+        '  - lib/a.dart:2:7 / ArithmeticOperator / + → - (Survived)',
       ]);
       const block = Mutant('GuardThrows', 13, 26, '{\n  throw 1;\n}');
       expect(
         survivorLines({
           'lib/b.dart': runOf(const [MutantResult(block, survived)]),
         }),
-        ['  lib/b.dart:1:14 GuardThrows: => x + 1; → { throw 1; }'],
+        [
+          '  - lib/b.dart:1:14 / GuardThrows / => x + 1; → { throw 1; } '
+              '(Survived)',
+        ],
       );
       expect(survivorLines({'lib/a.dart': runOf(const [])}), isEmpty);
     });

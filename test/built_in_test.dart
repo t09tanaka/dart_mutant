@@ -129,6 +129,95 @@ int f(int a) => a + count;
     );
   });
 
+  group('mutants that each compile in the program, but not together', () {
+    // Two decisions that each give `x` a value. With a block of the first
+    // emptied the second still does, and the other way round; with one of
+    // each emptied in the same program, a way to `return x` is left on
+    // which `x` has no value. The types are the same everywhere, so each
+    // choice alone is taken where it is.
+    const either = '''
+int either(bool a, bool b) {
+  int x;
+  if (a) { x = 1; } else { x = 2; }
+  if (b) { x = 3; } else { x = 4; }
+  return x;
+}
+''';
+
+    test('the later ones are left out, with the reason, and what is built '
+        'is a program', () async {
+      final (built, mutants) = await build(either);
+      final first = [
+        mutants.indexOf('BlockStatement { x = 1; } → {}'),
+        mutants.indexOf('BlockStatement { x = 2; } → {}'),
+      ];
+      final second = [
+        mutants.indexOf('BlockStatement { x = 3; } → {}'),
+        mutants.indexOf('BlockStatement { x = 4; } → {}'),
+      ];
+      expect([...first, ...second], everyElement(isNonNegative));
+      expect(built.left, {for (final id in second) id: notTogether});
+      expect(built.ids, [
+        for (var id = 0; id < mutants.length; id++)
+          if (!second.contains(id)) id,
+      ]);
+      expect(
+        built.reasons,
+        '2 does not compile together with the other mutants',
+      );
+      for (final id in first) {
+        expect(
+          built.content,
+          contains('if (\$dartMutantActive == $id) { {} }'),
+        );
+      }
+      for (final id in second) {
+        expect(built.content, isNot(contains('\$dartMutantActive == $id)')));
+      }
+    });
+
+    // More than one step of mutants before the two decisions.
+    const longer =
+        'int sum(int a, int b) =>\n'
+        '    a + b - a + b - a + b - a + b - a + b - a + b - a + b - a + b - '
+        'a + b - a + b;\n'
+        '$either';
+
+    test('they are looked for a few at a time: the mutants in front of '
+        'them, which go in together, stay in', () async {
+      final (built, mutants) = await build(longer);
+      final second = [
+        mutants.indexOf('BlockStatement { x = 3; } → {}'),
+        mutants.indexOf('BlockStatement { x = 4; } → {}'),
+      ];
+      expect(second.first, greaterThan(16));
+      expect(built.left, {for (final id in second) id: notTogether});
+      expect(built.ids, [
+        for (var id = 0; id < mutants.length; id++)
+          if (!second.contains(id)) id,
+      ]);
+    });
+
+    test('a run that is stopped while they are looked for builds in what '
+        'it has put together by then', () async {
+      var asked = 0;
+      final (all, mutants) = await build(longer);
+      // Asked once per mutant, once before they are put together, and once
+      // per step: stopped in front of the second step.
+      final (built, _) = await build(
+        longer,
+        stopped: () => ++asked > mutants.length + 2,
+      );
+      expect(all.ids, hasLength(mutants.length - 2));
+      expect(built.ids, [for (var id = 0; id < 16; id++) id]);
+      expect(built.left, isEmpty);
+      for (final id in built.ids) {
+        expect(built.content, contains('\$dartMutantActive == $id ?'));
+      }
+      expect(built.content, isNot(contains('\$dartMutantActive == 16 ')));
+    });
+  });
+
   test('a run that is stopped builds nothing more', () async {
     var asked = 0;
     final (built, mutants) = await build(

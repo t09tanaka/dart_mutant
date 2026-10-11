@@ -23,7 +23,7 @@ void main() {
     });
 
     for (final (name, text, message) in [
-      ('not JSON', '{', 'is not valid JSON'),
+      ('not JSON', '{', 'not valid JSON: '),
       ('an array', '[]', 'must be a JSON object'),
       ('another version', '{"version": 2, "targets": []}', '"version" must'),
       (
@@ -32,6 +32,28 @@ void main() {
         '"targets"',
       ),
       ('no targets', '{"version": 1, "targets": []}', 'at least one entry'),
+      (
+        'a key of the plan it does not know',
+        '{"version": 1, "targets": [{"file": "lib/a.dart", "tests": []}], '
+            '"target": []}',
+        'unknown top-level key "target"',
+      ),
+      (
+        'a key it does not know, before what is missing',
+        '{"version": 1, "tragets": []}',
+        'unknown top-level key "tragets"',
+      ),
+      (
+        'a key of a target it does not know',
+        '{"version": 1, "targets": [{"file": "lib/a.dart", "tests": []}, '
+            '{"file": "lib/b.dart", "tests": [], "only": true}]}',
+        'targets[1]: unknown key "only"',
+      ),
+      (
+        'a misspelt key of a target, before what is missing',
+        '{"version": 1, "targets": [{"file": "lib/a.dart", "test": []}]}',
+        'targets[0]: unknown key "test"',
+      ),
       (
         'a target that is no object',
         '{"version": 1, "targets": ["lib/a.dart"]}',

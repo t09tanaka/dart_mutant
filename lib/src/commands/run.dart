@@ -154,7 +154,7 @@ List<String> _recover(String root, _State state, Io io) {
         entity.deleteSync();
         _delete(placed);
         io.err(
-          '$executable: put back $path, which an interrupted run left with '
+          '$executable run: put back $path, which an interrupted run left with '
           'a mutant in it',
         );
         continue;
@@ -237,7 +237,8 @@ String? _writeReport(
 );
 
 /// The files to mutate and their tests, from the plan or from the arguments.
-/// Throws [UsageError] when they name nothing that can be run.
+/// Throws [UsageError] when the arguments name nothing that can be run, and
+/// [PlanError] when the plan cannot be read or is none.
 List<Target> _targetsOf(RunArgs args, String root) {
   final planPath = args.plan;
   if (planPath != null) {
@@ -245,12 +246,12 @@ List<Target> _targetsOf(RunArgs args, String root) {
     try {
       text = readText(planPath);
     } on FileSystemException catch (error) {
-      throw UsageError('cannot read the plan $planPath (${_reason(error)})');
+      throw PlanError('cannot read the plan $planPath (${_reason(error)})');
     }
     try {
       return parsePlan(text);
     } on PlanError catch (error) {
-      throw UsageError('the plan $planPath ${error.message}');
+      throw PlanError('$planPath: ${error.message}');
     }
   }
   final files = <String>[];
@@ -588,17 +589,18 @@ Future<({String? aborted, String? inPlace})> _runInCopies({
 ///
 /// Returns the exit code: 0 when no mutant survived, 1 when one did or a
 /// file could not be mutation tested, 130 / 143 / 129 when interrupted.
-/// Throws [UsageError] for wrong usage, before anything is changed.
+/// Throws [UsageError] for wrong usage and [PlanError] for a plan that
+/// cannot be used, before anything is changed.
 Future<int> runMutation(
   RunArgs args,
   Io io, {
   Duration Function(Duration baseline) limitOf = processLimit,
   int Function(int baseline) memoryLimitOf = memoryLimit,
 }) async {
-  if (!Directory(args.root).existsSync()) {
-    throw UsageError('--root ${args.root} is not a directory');
+  if (!Directory(args.dir).existsSync()) {
+    throw UsageError('--dir ${args.dir} is not a directory');
   }
-  final root = p.normalize(p.absolute(args.root));
+  final root = p.normalize(p.absolute(args.dir));
   final targets = _targetsOf(args, root);
   final selection = selectTargets([
     for (final target in targets) target.file,
@@ -621,7 +623,7 @@ Future<int> runMutation(
     lock = RunLock.acquire(state.lock);
   } on LockHeld catch (held) {
     io.err(
-      '$executable: another $executable run is at work in this package'
+      '$executable run: another $executable run is at work in this package'
       '${held.pid == null ? '' : ' (pid ${held.pid}'
                 '${held.started == null ? '' : ', started ${held.started}'})'}'
       '. Nothing was run or changed; run again when it has ended '
@@ -688,9 +690,9 @@ Future<int> _locked(
   final leftovers = _recover(root, state, io);
   if (leftovers.isNotEmpty) {
     for (final problem in leftovers) {
-      io.err('$executable: $problem');
+      io.err('$executable run: $problem');
     }
-    io.err('$executable: FAILED (nothing was run)');
+    io.err('$executable run: FAILED (nothing was run)');
     return 1;
   }
 
@@ -721,7 +723,7 @@ Future<int> _locked(
     );
     if (obstacle != null) {
       io.err(
-        '$executable: $obstacle, so it cannot be run from working copies. '
+        '$executable run: $obstacle, so it cannot be run from working copies. '
         'The mutants are run one at a time, in place (--jobs 1)'
         '${schemata ? ', and are not built into one program' : ''}',
       );
@@ -936,7 +938,7 @@ Future<int> _locked(
             : 'is behind a symbolic link';
         if (instead == null && notBuilt != null) {
           io.err(
-            '$executable: $path $notBuilt; its mutants are not built into '
+            '$executable run: $path $notBuilt; its mutants are not built into '
             'one program',
           );
         }
@@ -999,7 +1001,7 @@ Future<int> _locked(
             }
             if (outcome.failure != null) {
               io.err(
-                '$executable: $path: ${outcome.failure}; its mutants are '
+                '$executable run: $path: ${outcome.failure}; its mutants are '
                 'run the usual way',
               );
             } else {
@@ -1052,7 +1054,7 @@ Future<int> _locked(
                 fromDriver = const [];
                 left = pending;
                 io.err(
-                  '$executable: $path: the tests do not pass the usual way '
+                  '$executable run: $path: the tests do not pass the usual way '
                   'in a working copy; nothing of the driver is used',
                 );
               }
@@ -1117,7 +1119,7 @@ Future<int> _locked(
           remaining = const [];
         } else {
           io.err(
-            '$executable: $path $instead; its mutants are run one at a '
+            '$executable run: $path $instead; its mutants are run one at a '
             'time, in place',
           );
         }
@@ -1298,7 +1300,7 @@ Future<int> _locked(
       copies?.remove();
     } on FileSystemException catch (error) {
       io.err(
-        '$executable: cannot remove the working copies in $stateDir/work '
+        '$executable run: cannot remove the working copies in $stateDir/work '
         '(${_reason(error)}). The next run removes them',
       );
     }
@@ -1308,14 +1310,14 @@ Future<int> _locked(
 
   if (signals.signal != null) {
     io.err(
-      '$executable: interrupted. '
+      '$executable run: interrupted. '
       '${aborted ?? (inPlace ? 'The files were put back' : 'No file of the package was changed')}',
     );
     return signalExitCode(signals.signal!);
   }
   if (aborted != null) {
-    io.err('$executable: $aborted');
-    io.err('$executable: FAILED (the run was stopped)');
+    io.err('$executable run: $aborted');
+    io.err('$executable run: FAILED (the run was stopped)');
     return 1;
   }
 
@@ -1329,11 +1331,14 @@ Future<int> _locked(
   );
   final survivors = survivorLines(runs);
   if (survivors.isNotEmpty) {
-    io.out('Survived:');
-    survivors.forEach(io.out);
+    io.err('$executable run: ${survivors.length} surviving mutant(s)');
+    survivors.forEach(io.err);
   }
   if (failures.isNotEmpty) {
-    io.err('Could not be mutation tested:');
+    io.err(
+      '$executable run: ${failures.length} file(s) could not be mutation '
+      'tested',
+    );
     for (final MapEntry(key: path, value: reason) in failures.entries) {
       io.err('  - $path: $reason');
     }
@@ -1344,12 +1349,12 @@ Future<int> _locked(
       '${totalCounts(runs.values)}'
       '${failures.isEmpty ? '' : ' / ${failures.length} file(s) not tested'})';
   if (pageProblem != null) {
-    io.err('$executable: $pageProblem');
+    io.err('$executable run: $pageProblem');
   }
   if (survivors.isEmpty && failures.isEmpty && pageProblem == null) {
-    io.out('$executable: OK $summary');
+    io.out('$executable run: OK $summary');
     return 0;
   }
-  io.err('$executable: FAILED $summary');
+  io.err('$executable run: FAILED $summary');
   return 1;
 }

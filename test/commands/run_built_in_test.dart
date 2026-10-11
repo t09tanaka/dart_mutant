@@ -131,6 +131,41 @@ void main() {
 }
 ''';
 
+// Two decisions that each give `x` a value. A mutant that empties one
+// block of the first is a program, and so is one that empties a block of
+// the second; one of each in the same program leaves a way to `return x`
+// on which `x` has no value, and that is not a program.
+const either = '''
+int either(bool a, bool b) {
+  int x;
+  if (a) {
+    x = 1;
+  } else {
+    x = 2;
+  }
+  if (b) {
+    x = 3;
+  } else {
+    x = 4;
+  }
+  return x;
+}
+''';
+
+const eitherTest = '''
+import 'package:built_in_fixture/either.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('the second decision is the one that counts', () {
+    expect(either(true, true), 3);
+    expect(either(false, true), 3);
+    expect(either(true, false), 4);
+    expect(either(false, false), 4);
+  });
+}
+''';
+
 const twice = 'int twice(int n) => n * 2;\n';
 
 const twiceTest = '''
@@ -243,6 +278,8 @@ dev_dependencies:
     write('test/sign_test.dart', signTest(slowLog));
     write('lib/lookup.dart', lookup);
     write('test/lookup_test.dart', lookupTest);
+    write('lib/either.dart', either);
+    write('test/either_test.dart', eitherTest);
     write('lib/twice.dart', twice);
     write('test/twice_test.dart', twiceTest);
     write('lib/cases.dart', cases);
@@ -310,7 +347,7 @@ dev_dependencies:
     final before = tree();
     await runMutation(
       RunArgs(
-        root: dir.path,
+        dir: dir.path,
         targets: plan == null ? [file] : const [],
         plan: plan,
         force: force,
@@ -393,7 +430,11 @@ dev_dependencies:
         r'end, and the driver was ended$',
       ),
     );
-    expect(err.where((line) => !line.contains('FAILED')), isEmpty);
+    expect(err, [
+      'dart_mutant run: 1 surviving mutant(s)',
+      '  - lib/sum.dart:3:16 / NumberLiteral / 0 → 1 (Survived)',
+      startsWith('dart_mutant run: FAILED ('),
+    ]);
   });
 
   test('a mutant that takes more and more memory does not take the machine: '
@@ -461,7 +502,7 @@ dev_dependencies:
     expect(
       err,
       contains(
-        'dart_mutant: lib/next.dart: the tests do not pass without a mutant '
+        'dart_mutant run: lib/next.dart: the tests do not pass without a mutant '
         'when they are run more than once in one process ("the first run '
         'in a process" fails); its mutants are run the usual way',
       ),
@@ -547,6 +588,35 @@ dev_dependencies:
     );
   });
 
+  test('mutants that each compile in the program, but not together, are '
+      'left out of it and run the usual way', () async {
+    final usual = await mutate('lib/either.dart', schemata: false);
+    out.clear();
+    final builtIn = await mutate('lib/either.dart', schemata: true);
+    expect(builtIn, usual);
+    // The emptied blocks: what the first decision gives `x` is never
+    // read, and the tests notice each block of the second, which are the
+    // two that are not built in.
+    expect(builtIn.where((mutant) => mutant.startsWith('BlockStatement ')), [
+      'BlockStatement {}: Survived',
+      'BlockStatement {}: Survived',
+      'BlockStatement {}: Killed',
+      'BlockStatement {}: Killed',
+    ]);
+    expect(
+      out,
+      contains(startsWith('  lib/either.dart: 14 of 16 mutant(s) built')),
+    );
+    expect(
+      builtInLine('lib/either.dart'),
+      matches(
+        r'^  lib/either\.dart: \d+ killed with the mutants built in; '
+        r'2 cannot be built in \(2 does not compile together with the '
+        r'other mutants\)',
+      ),
+    );
+  });
+
   test('tests the driver cannot call are run the usual way', () async {
     final builtIn = await mutate('lib/twice.dart', schemata: true);
     expect(builtIn, [
@@ -557,7 +627,7 @@ dev_dependencies:
     expect(
       err,
       contains(
-        'dart_mutant: lib/twice.dart has a test (test/twice_test.dart) that '
+        'dart_mutant run: lib/twice.dart has a test (test/twice_test.dart) that '
         'has a main() that is async; its mutants are not built into one '
         'program',
       ),
@@ -586,14 +656,18 @@ dev_dependencies:
 
     // The results are those of any run: the next one takes them over.
     out.clear();
+    err.clear();
     expect(
       await mutate('lib/cases.dart', schemata: true, force: false),
       builtIn,
     );
     expect(out, [
       matches(r'^  lib/cases\.dart: 7 mutants / .* \(7 from the last run, '),
-      'Survived:',
-      ...List.filled(5, anything),
+    ]);
+    expect(err, [
+      'dart_mutant run: 5 surviving mutant(s)',
+      ...List.filled(5, endsWith(' (Survived)')),
+      startsWith('dart_mutant run: FAILED (7 mutants / killed 2 / survived 5 '),
     ]);
   });
 
@@ -624,10 +698,10 @@ dev_dependencies:
     expect(
       err,
       containsAllInOrder([
-        'dart_mutant: lib/pair.dart: the tests do not pass the usual way in '
+        'dart_mutant run: lib/pair.dart: the tests do not pass the usual way in '
             'a working copy; nothing of the driver is used',
-        startsWith('dart_mutant: lib/pair.dart has tests that fail in a '),
-        'Could not be mutation tested:',
+        startsWith('dart_mutant run: lib/pair.dart has tests that fail in a '),
+        'dart_mutant run: 1 file(s) could not be mutation tested',
         startsWith('  - lib/pair.dart: the tests fail without a mutant'),
       ]),
     );
@@ -739,7 +813,7 @@ dev_dependencies:
       expect(
         await errors,
         contains(
-          'dart_mutant: interrupted. No file of the package was changed',
+          'dart_mutant run: interrupted. No file of the package was changed',
         ),
       );
       expect(tree(), before);

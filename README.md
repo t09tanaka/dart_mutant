@@ -1,5 +1,7 @@
 # dart_mutant
 
+[![CI](https://github.com/t09tanaka/dart_mutant/actions/workflows/ci.yml/badge.svg)](https://github.com/t09tanaka/dart_mutant/actions/workflows/ci.yml)
+
 Mutation testing for Dart and Flutter.
 
 `dart_mutant` changes a source file in one small place at a time (a **mutant**: `+` → `-`, a condition → `true`, `round()` → `floor()`), runs the tests of that file on each, and lists the mutants no test noticed. Those are the places where the code decides something that nothing checks.
@@ -14,16 +16,18 @@ Mutation testing for Dart and Flutter.
 ```
 $ dart_mutant run lib/discount.dart
   lib/discount.dart: 18 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 3 at a time (4 do not compile)
-  lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (12.8s)
-Survived:
-  lib/discount.dart:7:30 NumberLiteral: 0 → 1
-  lib/discount.dart:8:39 MethodExpression: round → ceil
-dart_mutant: FAILED (22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run))
+  lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (10.0s)
+dart_mutant run: 2 surviving mutant(s)
+  - lib/discount.dart:7:30 / NumberLiteral / 0 → 1 (Survived)
+  - lib/discount.dart:8:39 / MethodExpression / round → ceil (Survived)
+dart_mutant run: FAILED (22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run))
 ```
 
 (That is [`example/`](example/): no test has a percentage below zero, and none has a price that rounds down.)
 
 ## Install
+
+> **Not on pub.dev yet.** Until it is, install it from git: `dart pub global activate --source git https://github.com/t09tanaka/dart_mutant`
 
 ```bash
 dart pub global activate dart_mutant
@@ -42,7 +46,7 @@ dart_mutant merge <part.json>... --report <path> [--html <path>]
 dart_mutant --version | --help
 ```
 
-Run it in the package (or name the package with `--root`). `merge` is for a run that was divided with `--shard`, see [A run in several parts](#a-run-in-several-parts---shard-and-merge).
+Run it in the package (or name the package with `--dir`). `merge` is for a run that was divided with `--shard`, see [A run in several parts](#a-run-in-several-parts---shard-and-merge).
 
 ### Which files, and which tests
 
@@ -73,13 +77,22 @@ dart_mutant run --plan mutation-plan.json
 
 `file` and `tests` are relative to the package, with `/`, without `.` or `..`. The order of `targets` is the order of the run and of the report (with `--only`, what the report keeps about the other files comes first). With a plan nothing is guessed: only the tests it lists are run, and a file whose `tests` is empty, or names a file that is not there, fails the run.
 
+**A key the plan does not have is refused** (exit code 2), with the place and the key (`unknown top-level key "tragets"`, or for `"test"` where `"tests"` was meant):
+
+```
+$ dart_mutant run --plan plan.json
+dart_mutant: plan.json: targets[0]: unknown key "test"
+```
+
+The keys are `version` and `targets`, and in a target `file` and `tests`. It is the reason `test-gates.json` refuses unknown keys: a misspelt key that is silently ignored is a plan that says less than was meant, and the run that follows looks like the full one.
+
 ### Options
 
 | Option            | Meaning                                                                                              |
 | ----------------- | ---------------------------------------------------------------------------------------------------- |
-| `--root <dir>`    | The package to mutate. Default: the current directory                                                |
+| `--dir <package>` | The package to mutate. Default: `.`, the current directory                                           |
 | `--plan <file>`   | The plan file (a path as your shell sees it). Not together with files as arguments                   |
-| `--only <file>`   | Limit the run to this file of the plan or of the arguments. May be given more than once. A path that is not a file of the run is wrong usage. The report keeps what it says about the other files |
+| `--only <file>`   | Limit the run to this file of the plan or of the arguments. May be given more than once. A path that is not a file of the run is wrong usage. The report keeps what it says about the other files. It is what `--gate` is in `test_gates`; this tool knows no list of gates and is given files, hence `--only` |
 | `--report <path>` | Where the report is written (a path as your shell sees it). Default: `reports/mutation/mutation.json` in the package. A file that is already there is only replaced when it is a report |
 | `--html <path>`   | Also write the report as a page for a browser (a path as your shell sees it, ending in `.html`), see [The report as a page](#the-report-as-a-page---html). A file that is already there is only replaced when it is such a page |
 | `--force`         | Run every mutant again, see [Results of the last run](#results-of-the-last-run-and---force)          |
@@ -87,24 +100,28 @@ dart_mutant run --plan mutation-plan.json
 | `--schemata`      | Experimental. Build the mutants of a file into one program and run its tests on all of them in one process, see [All mutants of a file in one program](#all-mutants-of-a-file-in-one-program---schemata) |
 | `--no-schemata`   | One start of the test runner per mutant. The default                                                 |
 | `--shard <i>/<n>` | Run part `i` of `n` of the mutants of each file, see [A run in several parts](#a-run-in-several-parts---shard-and-merge). The report is then a part, not a result |
+| `-h`, `--help`    | Show the help                                                                                        |
+| `-v`, `--version` | Show the version                                                                                     |
 | `-- <command>`    | The command that runs test files                                                                     |
 
 **The test command** is `flutter test --no-pub` when the pubspec has a dependency from the Flutter SDK, and `dart test` otherwise. A command after `--` replaces it (`-- fvm flutter test --no-pub`). `--fail-fast --timeout 10s` and the test files are appended to it, so it has to be a `dart test` / `flutter test` of some kind. It is started in the package, without a shell. (With `--schemata` the program that holds all mutants of a file is run with `--timeout 10s --reporter json` instead, so the command has to take those as well.)
 
 ### What it prints, and the exit code
 
-For each file a line when its tests start (with `, 3 at a time` when the mutants are run in working copies) and a line with the counts, then the survivors (`file:line:column Mutator: original → replacement`; text that spans lines is shown on one), then the totals.
+For each file a line when its tests start (with `, 3 at a time` when the mutants are run in working copies) and a line with the counts. Then, under a line that counts them (`dart_mutant run: 2 surviving mutant(s)`), the survivors, one line each: `file:line:column / Mutator / original → replacement (Survived)`, the line `test_gates` writes for a mutant (text that spans lines is shown on one). The last line is `dart_mutant run: OK (…)` or `dart_mutant run: FAILED (…)` with the totals, and `dart_mutant merge: …` for `merge`.
+
+The lines of the files and the `OK` line go to stdout. What is wrong goes to stderr: the survivors, a file that could not be mutation tested, the `FAILED` line. Wrong usage is answered with `dart_mutant: <what is wrong>`, an empty line and the help (`--help`); a plan file that cannot be used with the first of these alone, since the help would not say what is wrong with it.
 
 | Exit code       | Meaning                                                                                       |
 | --------------- | --------------------------------------------------------------------------------------------- |
 | 0               | No mutant survived                                                                            |
 | 1               | A mutant survived, or something could not be mutation tested: a file without a test, tests that fail without a mutant, a file that is not there or cannot be parsed, a package that is not resolved, a test command that cannot be started, a page of `--html` that cannot be written (the report is written), another `dart_mutant` at work in the package (nothing is changed then). For `merge`: a mutant survived, or the parts are not all the parts of one run (no report is written then) |
-| 2               | Wrong usage: an unknown option, a plan that cannot be read, a glob that matches nothing, a file that is not a `.dart` file inside the package, a `--report` or `--html` that would replace a file of another kind. Nothing is run or changed |
+| 2               | Wrong usage, or a plan file that cannot be used: an unknown option, a plan that cannot be read or has a key it does not know, a glob that matches nothing, a file that is not a `.dart` file inside the package, a `--report` or `--html` that would replace a file of another kind. Nothing is run or changed |
 | 130 / 143 / 129 | Interrupted (SIGINT / SIGTERM / SIGHUP); the working copies were removed, or the files were put back, and no report was written |
 
 A run starts by removing the report of the last run (with `--only`: what it says about the files of this run), and the page of `--html` with it, so that a run that writes none cannot be read as a result. A run that is interrupted, or that has to stop (the package is not resolved, the test command cannot be started, a file changed during the run), writes no report and does not list the survivors it had found.
 
-**There is no score threshold.** A percentage says nothing about which decision is unchecked, and a threshold below 100 lets new survivors in unnoticed. The exit code depends on the survivors alone; a tool that wants to allow some of them (an equivalent mutant, with a reason) reads the report and decides for itself. `Timeout` and `CompileError` do not fail the run; the counts show them.
+**There is no score threshold.** A percentage says nothing about which decision is unchecked, and a threshold below 100 lets new survivors in unnoticed. The exit code depends on the survivors alone; a tool that wants to allow some of them (an equivalent mutant, with a reason) reads the report and decides for itself, see [With `test_gates`](#with-test_gates). `Timeout` and `CompileError` do not fail the run; the counts show them.
 
 | Status of a mutant | When                                                                                         |
 | ------------------ | -------------------------------------------------------------------------------------------- |
@@ -270,11 +287,11 @@ $ dart_mutant run --schemata lib/discount.dart
   lib/discount.dart: 18 of 22 mutant(s) built into one program, with "dart test --timeout 10s --reporter json test/dart_mutant_driver_test.dart" (4 do not compile)
   lib/discount.dart: 16 killed with the mutants built in; 2 not killed that way are measured the usual way
   lib/discount.dart: 2 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 2 at a time
-  lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (8.7s)
-Survived:
-  lib/discount.dart:7:30 NumberLiteral: 0 → 1
-  lib/discount.dart:8:39 MethodExpression: round → ceil
-dart_mutant: FAILED (22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run))
+  lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (9.0s)
+dart_mutant run: 2 surviving mutant(s)
+  - lib/discount.dart:7:30 / NumberLiteral / 0 → 1 (Survived)
+  - lib/discount.dart:8:39 / MethodExpression / round → ceil (Survived)
+dart_mutant run: FAILED (22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run))
 ```
 
 The mutants, their numbers, the report and the exit code are those of a run without the option. **Only `Killed` is ever taken from the one program**; everything else is run the usual way, one start of the test runner per mutant, before it is reported. The rules below are there so that the statuses are the same either way. In what was measured they were, mutant by mutant (see [How long it takes](#how-long-it-takes)); what is not guaranteed is under [What can still go wrong](#what-can-still-go-wrong).
@@ -316,6 +333,7 @@ Run the usual way, and counted in the line of the file (`12 cannot be built in (
 - **A constant.** The element of a `const` list, map, set or record, the default of a parameter, the argument of a `const` constructor, a `case` of a `switch`, a value of an `enum`: a choice made while the program runs is no constant. (Some of them are counted under the next reason, or as "does not compile with a choice there": the line gives the reason as the tool found it.) Where a statement around the constant can take the choice it does (`return const [1, 2];`); in a top-level `const` nothing can.
 - **An initializer that runs once in a process**: of a top-level variable or a `static` field, outside every function in it. It runs when the variable is first read, with the mutant that is at work then, and never again.
 - A place where every choice changes the program (see above) and no statement around it is small enough.
+- A mutant that compiles in the program by itself but not with the mutants that are already in it (`does not compile together with the other mutants`). Two mutants that each take away one of two assignments to a variable are each a program; with both built in, the compiler sees a way on which the variable has no value, although no run ever takes it.
 - A whole file: a `part of` file (the driver has to import the file to set the variable), a file that starts with a byte order mark, a file that uses the name `$dartMutantActive`.
 - The tests of a file, when the driver cannot call them as the test runner does: no `main()`, a `main` that takes arguments or is `async`, an annotation on the library (`@Timeout`, `@TestOn`, `@Retry`, `@Tags`, `@Skip`: it is for the test runner, which would not see it on the driver), tests in more than one directory, a file that already has the name of the driver, a package with neither `test` nor `flutter_test`. A line on stderr says which.
 - A package that cannot be run from a working copy (a pub workspace, a `path:` dependency outside the package): `--schemata` then does nothing, and says so.
@@ -338,6 +356,7 @@ The drivers run in the working copies of `--jobs`: when a file has more than 25 
 - **Code that runs in another isolate** does not see the variable. Its mutants are not killed in the driver and are run the usual way.
 - **It does not always pay.** A mutant that survives costs its run in the driver and then a run of its own. A file whose mutants mostly survive, or mostly cannot be built in, takes about as long as without the option; so does a file whose tests take seconds, where the time was never the start of the runner.
 - **A test that is slow because the machine is busy** fails as it does without the option; when that is a test without a mutant, the whole file falls back to the usual way.
+
 ## A run in several parts (`--shard` and `merge`)
 
 One file with many mutants, or with slow tests, takes as long as it takes: `--jobs` is limited by the processors of one machine. `--shard <i>/<n>` divides the mutants of **each file** into `n` parts and runs part `i`, so that `n` machines (the jobs of a CI workflow) can each take one, and `dart_mutant merge` puts their reports together into the report of the whole run.
@@ -345,22 +364,22 @@ One file with many mutants, or with slow tests, takes as long as it takes: `--jo
 ```
 $ dart_mutant run lib/discount.dart --shard 1/2 --report reports/parts/1.json
   lib/discount.dart: 9 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 3 at a time (2 do not compile)
-  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (7.7s)
-Survived:
-  lib/discount.dart:7:30 NumberLiteral: 0 → 1
-dart_mutant: FAILED (shard 1/2: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run))
+  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (7.9s)
+dart_mutant run: 1 surviving mutant(s)
+  - lib/discount.dart:7:30 / NumberLiteral / 0 → 1 (Survived)
+dart_mutant run: FAILED (shard 1/2: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run))
 $ dart_mutant run lib/discount.dart --shard 2/2 --report reports/parts/2.json
   lib/discount.dart: 9 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 3 at a time (2 do not compile)
-  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (7.7s)
-Survived:
-  lib/discount.dart:8:39 MethodExpression: round → ceil
-dart_mutant: FAILED (shard 2/2: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run))
+  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (8.4s)
+dart_mutant run: 1 surviving mutant(s)
+  - lib/discount.dart:8:39 / MethodExpression / round → ceil (Survived)
+dart_mutant run: FAILED (shard 2/2: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run))
 $ dart_mutant merge reports/parts/1.json reports/parts/2.json --report reports/mutation/mutation.json
   lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run)
-Survived:
-  lib/discount.dart:7:30 NumberLiteral: 0 → 1
-  lib/discount.dart:8:39 MethodExpression: round → ceil
-dart_mutant: FAILED (2 part(s) merged: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run))
+dart_mutant merge: 2 surviving mutant(s)
+  - lib/discount.dart:7:30 / NumberLiteral / 0 → 1 (Survived)
+  - lib/discount.dart:8:39 / MethodExpression / round → ceil (Survived)
+dart_mutant merge: FAILED (2 part(s) merged: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run))
 ```
 
 (That is [`example/`](example/) again.)
@@ -389,9 +408,9 @@ reads the reports of the parts `1/n` to `n/n` of one run and writes the report t
 
 ```
 $ dart_mutant merge reports/parts/1.json --report reports/mutation/mutation.json
-The parts are not the parts of one run:
+dart_mutant merge: the parts are not the parts of one run
   - shard 2/2 is missing
-dart_mutant: FAILED (nothing was merged)
+dart_mutant merge: FAILED (nothing was merged)
 ```
 
 - a file that is not the report of a part (the report of a whole run, or anything else);
@@ -463,7 +482,7 @@ How much it gains depends on what a part costs before its first mutant (the chec
 A run takes a lock on `.dart_tool/dart_mutant/lock` before it changes anything: before it removes the report of the last run, and before it puts back what a killed run left. A second `dart_mutant run` in the same package, with any number of jobs, ends with exit code 1 and changes nothing:
 
 ```
-dart_mutant: another dart_mutant run is at work in this package (pid 4242, started 2026-01-02T03:04:05.678Z). Nothing was run or changed; run again when it has ended (the lock is .dart_tool/dart_mutant/lock)
+dart_mutant run: another dart_mutant run is at work in this package (pid 65398, started 2026-10-11T22:29:56.240946Z). Nothing was run or changed; run again when it has ended (the lock is .dart_tool/dart_mutant/lock)
 ```
 
 It is a lock of the operating system on that file (`fcntl` on macOS and Linux), which the run holds for as long as it lives. The operating system gives it up when the process ends, however it ends, so a run that was killed never has to be told from a running one by its process id, and no stale lock has to be removed by hand. The process id and the time in the file are only there for the message; the file itself stays. On a file system without such locks (some network mounts) a run does not start, and says that the file cannot be locked.
@@ -503,6 +522,18 @@ The page is shown by the `mutation-test-report-app` element of [`mutation-testin
 - The percentages and their colours are the viewer's. This tool has no score and no threshold; the `thresholds` in the report are 100, so everything below is shown as not passed.
 - The paths in the list are shown without the directory all files share (`discount.dart` for `lib/discount.dart` when every file is below `lib/`).
 - A run with `--html` treats the page as it treats the report: the page of the last run is removed when the run starts, a run that is interrupted or has to stop writes none, and with `--only` the other files stay in it. A run **without** `--html` does not know the page of an earlier run and leaves it where it is, as old as it is; give `--html` every time, or delete the page.
+
+## With `test_gates`
+
+[`test_gates`](https://pub.dev/packages/test_gates) keeps the list and gives the verdict: `test-gates.json` names the files that must not be wrong, and says which surviving mutants are allowed, each with a reason. `dart_mutant` runs the mutants: it is given files and their tests, and knows no list and no allowance. **The two are used together; neither replaces the other.**
+
+What connects them today is the report. `test_gates` 0.1.x has a mutation test of its own (`test_gates mutation`: the twelve syntax mutators, in place, one mutant at a time) and does not start `dart_mutant`. Its `test_gates mutation-result --report <path>` judges any report in the schema this tool writes, so the mutants can be run here and judged there:
+
+1. write the gates and their tests into a [plan file](#which-files-and-which-tests),
+2. `dart_mutant run --plan <plan.json> --report <path>` (exit code 1 with a report means that a mutant survived, or that a file could not be mutation tested; which survivors are allowed, and that no gate is missing from the report, is the next step),
+3. `test_gates mutation-result --report <path>`.
+
+[This package does that for its own gates](#the-gates-of-this-package), with a script. That `test_gates` starts `dart_mutant` by itself is meant for a later version of it; no published version does.
 
 ## Limitations
 
@@ -601,6 +632,12 @@ The script turns the gates into a plan, runs `dart_mutant run --plan` from this 
 ### The copy of the mutators of `test_gates` 0.1.0
 
 `test/compat/test_gates_0_1_0_mutators.dart` is the file `lib/src/mutators.dart` of [`test_gates`](https://pub.dev/packages/test_gates) 0.1.0 (same author, MIT licence), unchanged below a header that says where it is from. `test/compat_test.dart` runs it and the syntax mutators of this package on the same sources and requires the same mutants. It is kept as it was published: do not edit or reformat it.
+
+## Related tools
+
+- [test_gates](https://github.com/t09tanaka/test-gates-dart) (pub.dev): gates for Dart and Flutter. A list of the files that must not be wrong, each one pure, covered completely, guarded by a negative control and by a verdict on a mutation report such as the one this tool writes.
+- [test-gates](https://github.com/t09tanaka/test-gates) (npm `@t09tanaka/test-gates`): the same gates for JavaScript and TypeScript, with Stryker as the mutation tool.
+- [contract-fixtures](https://github.com/t09tanaka/contract-fixtures) (TypeScript and Dart): shared request and response fixtures that keep an API and its clients in step.
 
 ## License
 

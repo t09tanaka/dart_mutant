@@ -40,7 +40,7 @@ void main() {
     'run',
     '--jobs',
     '1',
-    '--root',
+    '--dir',
     package.path,
     ...arguments,
     '--',
@@ -100,7 +100,7 @@ void main() {
           r'^  lib/b\.dart: 2 mutants / killed 2 / survived 0 / timeout 0 '
           r'/ compile error 0 \(\d+\.\ds\)$',
         ),
-        'dart_mutant: OK (3 mutants / killed 3 / survived 0 / timeout 0 / '
+        'dart_mutant run: OK (3 mutants / killed 3 / survived 0 / timeout 0 / '
             'compile error 0)',
       ]);
       expectFilesUntouched();
@@ -194,7 +194,7 @@ void main() {
       expect(mutantsOf('lib/b.dart').first.containsKey('statusReason'), false);
       expect(
         package.out.last,
-        'dart_mutant: OK (3 mutants / killed 2 / survived 0 / timeout 0 / '
+        'dart_mutant run: OK (3 mutants / killed 2 / survived 0 / timeout 0 / '
         'compile error 1)',
       );
     });
@@ -302,20 +302,30 @@ void main() {
         1,
       );
       expect(package.err, [
-        'Could not be mutation tested:',
+        'dart_mutant run: 3 file(s) could not be mutation tested',
         '  - lib/a.dart: test file not found: test/gone_test.dart (the check '
             'is case-sensitive)',
         '  - lib/b.dart: the plan lists no test for this file',
         '  - lib/c.dart: file not found (the check is case-sensitive)',
-        'dart_mutant: FAILED (0 mutants / killed 0 / survived 0 / timeout 0 '
+        'dart_mutant run: FAILED (0 mutants / killed 0 / survived 0 / timeout 0 '
             '/ compile error 0 / 3 file(s) not tested)',
       ]);
     });
 
     for (final (name, plan, message) in [
-      ('not JSON', '{', 'is not valid JSON'),
-      ('not an object', '[]', 'must be a JSON object'),
-      ('no version', '{"targets": []}', '"version" must be 1'),
+      ('not JSON', '{', 'plan.json: not valid JSON: '),
+      ('not an object', '[]', 'plan.json: must be a JSON object'),
+      ('no version', '{"targets": []}', 'plan.json: "version" must be 1'),
+      (
+        'a key the plan does not have',
+        '{"version": 1, "targets": [], "tests": []}',
+        'plan.json: unknown top-level key "tests"',
+      ),
+      (
+        'a key a target does not have',
+        '{"version": 1, "targets": [{"file": "lib/a.dart", "test": []}]}',
+        'plan.json: targets[0]: unknown key "test"',
+      ),
       (
         'no targets',
         '{"version": 1, "targets": []}',
@@ -327,10 +337,13 @@ void main() {
         'targets[0]: "../a.dart" must be a path inside the package',
       ),
     ]) {
-      test('$name is wrong usage, and nothing is run', () async {
+      test('$name: exit code 2, and nothing is run', () async {
         killEverything();
         expect(await planned(plan), 2);
-        expect(package.err.first, contains(message));
+        // The file is wrong, not the command line: no help after it.
+        expect(package.err, [
+          allOf(startsWith('dart_mutant: '), contains(message)),
+        ]);
         expect(package.runs, isEmpty);
       });
     }
@@ -338,11 +351,16 @@ void main() {
     test('a plan and files together are wrong usage', () async {
       expect(await planned({'version': 1}, ['lib/a.dart']), 2);
       expect(package.err.first, contains('either --plan or files'));
+      expect(package.err.last, help);
     });
 
-    test('a plan that cannot be read is wrong usage', () async {
+    test('a plan that cannot be read: exit code 2', () async {
       expect(await mutate(['--plan', '${package.path}/none.json']), 2);
-      expect(package.err.first, contains('cannot read the plan'));
+      expect(package.err, [
+        startsWith(
+          'dart_mutant: cannot read the plan ${package.path}/none.json (',
+        ),
+      ]);
     });
   });
 
@@ -352,13 +370,12 @@ void main() {
       package.fakeTest('lib/a.dart', []);
       package.fakeTest('lib/b.dart', ['expect: y - x']);
       expect(await mutate(), 1);
-      expect(package.out.sublist(4), [
-        'Survived:',
-        '  lib/a.dart:1:26 ArithmeticOperator: + → -',
-        '  lib/b.dart:1:26 ArithmeticOperator: * → /',
-      ]);
+      expect(package.out, hasLength(4));
       expect(package.err, [
-        'dart_mutant: FAILED (3 mutants / killed 1 / survived 2 / timeout 0 '
+        'dart_mutant run: 2 surviving mutant(s)',
+        '  - lib/a.dart:1:26 / ArithmeticOperator / + → - (Survived)',
+        '  - lib/b.dart:1:26 / ArithmeticOperator / * → / (Survived)',
+        'dart_mutant run: FAILED (3 mutants / killed 1 / survived 2 / timeout 0 '
             '/ compile error 0)',
       ]);
       expectFilesUntouched();
@@ -372,10 +389,10 @@ void main() {
       expect(await mutate(), 1);
       expect(package.err, [
         '      00:00 +0 -1: Some tests failed.',
-        'Could not be mutation tested:',
+        'dart_mutant run: 1 file(s) could not be mutation tested',
         '  - lib/a.dart: the tests fail without a mutant (exit 1; a test '
             'gets 10s). Nothing was measured',
-        'dart_mutant: FAILED (2 mutants / killed 2 / survived 0 / timeout 0 '
+        'dart_mutant run: FAILED (2 mutants / killed 2 / survived 0 / timeout 0 '
             '/ compile error 0 / 1 file(s) not tested)',
       ]);
       expect((report()['files']! as Map).keys, ['lib/b.dart']);
@@ -388,13 +405,13 @@ void main() {
       package.fakeTest('lib/c.dart', []);
       expect(await mutate(['lib/a.dart', 'lib/gone.dart', 'lib/c.dart']), 1);
       expect(package.err, [
-        'Could not be mutation tested:',
+        'dart_mutant run: 3 file(s) could not be mutation tested',
         '  - lib/a.dart: no test found (looked for lib/a_test.dart, '
             'test/a_test.dart). Name the tests in a plan (--plan) when they '
             'are somewhere else',
         '  - lib/gone.dart: file not found (the check is case-sensitive)',
         '  - lib/c.dart: cannot be read as Dart (syntax error)',
-        'dart_mutant: FAILED (0 mutants / killed 0 / survived 0 / timeout 0 '
+        'dart_mutant run: FAILED (0 mutants / killed 0 / survived 0 / timeout 0 '
             '/ compile error 0 / 3 file(s) not tested)',
       ]);
       expect(package.runs, isEmpty);
@@ -407,9 +424,9 @@ void main() {
       package.fakeTest('lib/a#b%20c.dart', []);
       expect(await mutate(['lib/a#b%20c.dart', 'lib/a.dart']), 1);
       expect(package.err, [
-        'Could not be mutation tested:',
+        'dart_mutant run: 1 file(s) could not be mutation tested',
         startsWith('  - lib/a#b%20c.dart: cannot be analyzed ('),
-        'dart_mutant: FAILED (1 mutants / killed 1 / survived 0 / timeout 0 '
+        'dart_mutant run: FAILED (1 mutants / killed 1 / survived 0 / timeout 0 '
             '/ compile error 0 / 1 file(s) not tested)',
       ]);
       expect(package.read('lib/a#b%20c.dart'), sourceA);
@@ -422,7 +439,7 @@ void main() {
         'run',
         '--jobs',
         '1',
-        '--root',
+        '--dir',
         package.path,
         'lib/a.dart',
         '--',
@@ -430,8 +447,10 @@ void main() {
       ], package.io);
       expect(code, 1);
       expect(package.err, [
-        startsWith('dart_mutant: cannot start "no-such-program-dart-mutant" ('),
-        'dart_mutant: FAILED (the run was stopped)',
+        startsWith(
+          'dart_mutant run: cannot start "no-such-program-dart-mutant" (',
+        ),
+        'dart_mutant run: FAILED (the run was stopped)',
       ]);
       expectFilesUntouched();
     });
@@ -441,9 +460,9 @@ void main() {
       package.file('.dart_tool/package_config.json').deleteSync();
       expect(await mutate(), 1);
       expect(package.err, [
-        'dart_mutant: .dart_tool/package_config.json not found. Run "dart '
+        'dart_mutant run: .dart_tool/package_config.json not found. Run "dart '
             'pub get" (or "flutter pub get") in the package first',
-        'dart_mutant: FAILED (the run was stopped)',
+        'dart_mutant run: FAILED (the run was stopped)',
       ]);
       expect(package.runs, isEmpty);
     });
@@ -464,23 +483,29 @@ void main() {
   group('exit code 2', () {
     for (final (name, arguments, message) in [
       ('no command', <String>[], 'no command given'),
-      ('an unknown command', ['mutate'], 'unknown command "mutate"'),
-      ('an unknown option', ['run', '--fast'], 'unknown option "--fast"'),
+      ('an unknown command', ['mutate'], 'unknown command: mutate'),
+      (
+        'an unknown option',
+        ['run', '--fast'],
+        'unknown argument for run: --fast',
+      ),
       ('nothing to mutate', ['run'], 'nothing to mutate'),
-      ('an option without its value', ['run', '--root'], '--root needs a'),
+      ('an option without its value', ['run', '--dir'], '--dir needs a'),
       ('-- without a command', ['run', 'lib/a.dart', '--'], '"--" must be'),
       (
         'a root that is not there',
-        ['run', '--root', '/no/such/dir', 'lib/a.dart'],
+        ['run', '--dir', '/no/such/dir', 'lib/a.dart'],
         'is not a directory',
       ),
     ]) {
       test(name, () async {
         expect(await run(arguments, package.io), 2);
+        // As test_gates does: what is wrong, an empty line, the help.
         expect(package.err, [
-          contains(message),
-          'Run "dart_mutant --help" for the usage.',
+          allOf(startsWith('dart_mutant: '), contains(message), endsWith('\n')),
+          help,
         ]);
+        expect(package.out, isEmpty);
       });
     }
 
@@ -496,7 +521,7 @@ void main() {
       expect(await mutate(['lib/a.dart', '--only', 'lib/b.dart']), 2);
       expect(
         package.err.first,
-        'dart_mutant: --only lib/b.dart: not a file of this run',
+        'dart_mutant: --only lib/b.dart: not a file of this run\n',
       );
       expect(package.runs, isEmpty);
     });
@@ -523,10 +548,11 @@ void main() {
 
     test('--help and --version', () async {
       expect(await run(['--help'], package.io), 0);
-      expect(package.out.single, startsWith('dart_mutant: mutation testing'));
+      expect(package.out.single, startsWith('dart_mutant — mutation testing'));
       package.out.clear();
       expect(await run(['--version'], package.io), 0);
-      expect(package.out, ['0.1.0']);
+      expect(await run(['-v'], package.io), 0);
+      expect(package.out, ['0.1.0', '0.1.0']);
     });
   });
 
@@ -535,7 +561,7 @@ void main() {
 
     Future<int> heavy() => runMutation(
       RunArgs(
-        root: package.path,
+        dir: package.path,
         targets: const ['lib/a.dart', 'lib/b.dart'],
         command: package.fake,
         jobs: 1,
@@ -566,7 +592,7 @@ void main() {
         );
         expect(
           package.out.last,
-          'dart_mutant: OK (3 mutants / killed 2 / survived 0 / timeout 1 / '
+          'dart_mutant run: OK (3 mutants / killed 2 / survived 0 / timeout 1 / '
           'compile error 0)',
         );
         expect(statusesOf('lib/b.dart'), ['Timeout', 'Killed']);
@@ -606,7 +632,7 @@ void main() {
   group('timeouts', () {
     Future<int> quick([bool force = false]) => runMutation(
       RunArgs(
-        root: package.path,
+        dir: package.path,
         targets: const ['lib/a.dart', 'lib/b.dart'],
         command: package.fake,
         force: force,
@@ -656,7 +682,7 @@ void main() {
           '  lib/b.dart: 2 mutants / killed 1 / survived 0 / timeout 1 '
           '/ compile error 0 (1 from the last run, ',
         ),
-        'dart_mutant: OK (3 mutants / killed 2 / survived 0 / timeout 1 / '
+        'dart_mutant run: OK (3 mutants / killed 2 / survived 0 / timeout 1 / '
             'compile error 0)',
       ]);
       // lib/b.dart: the tests without a mutant, and the one mutant.
@@ -680,7 +706,7 @@ void main() {
             '/ compile error 0 (1 from the last run, 0.0s)',
         '  lib/b.dart: 2 mutants / killed 2 / survived 0 / timeout 0 '
             '/ compile error 0 (2 from the last run, 0.0s)',
-        'dart_mutant: OK (3 mutants / killed 3 / survived 0 / timeout 0 / '
+        'dart_mutant run: OK (3 mutants / killed 3 / survived 0 / timeout 0 / '
             'compile error 0)',
       ]);
       expect(package.runs, hasLength(5));
@@ -704,7 +730,10 @@ void main() {
         jsonEncode(report()),
         first.replaceAll(RegExp(r'"duration":\d+'), '"duration":0'),
       );
-      expect(package.out.last, '  lib/b.dart:1:30 ArithmeticOperator: - → +');
+      expect(
+        package.err[package.err.length - 2],
+        '  - lib/b.dart:1:30 / ArithmeticOperator / - → + (Survived)',
+      );
     });
 
     test('a changed file or a changed test is run again, the other file is '
@@ -725,7 +754,7 @@ void main() {
           'run',
           '--jobs',
           '1',
-          '--root',
+          '--dir',
           package.path,
           'lib/a.dart',
           '--',
@@ -747,7 +776,7 @@ void main() {
           'run',
           '--jobs',
           '1',
-          '--root',
+          '--dir',
           package.path,
           'lib/a.dart',
           'lib/b.dart',
@@ -803,7 +832,7 @@ void main() {
       expect(package.out, [
         '  lib/a.dart: 1 of 1 mutant(s) with ${shown('lib/a_test.dart')}',
         startsWith('  lib/a.dart: 1 mutants / killed 1 '),
-        'dart_mutant: OK (1 mutants / killed 1 / survived 0 / timeout 0 / '
+        'dart_mutant run: OK (1 mutants / killed 1 / survived 0 / timeout 0 / '
             'compile error 0)',
       ]);
       expect((report()['files']! as Map).keys, ['lib/b.dart', 'lib/a.dart']);
@@ -854,7 +883,7 @@ void main() {
       package.write('$stateDir/staging', 'half');
       expect(await mutate(), 0);
       expect(package.err, [
-        'dart_mutant: put back lib/a.dart, which an interrupted run left '
+        'dart_mutant run: put back lib/a.dart, which an interrupted run left '
             'with a mutant in it',
       ]);
       expectFilesUntouched();
@@ -876,11 +905,11 @@ void main() {
       package.write('lib/a.dart', '$mutant// my edit\n');
       expect(await mutate(), 1);
       expect(package.err, [
-        'dart_mutant: lib/a.dart: an interrupted run left a mutant in this '
+        'dart_mutant run: lib/a.dart: an interrupted run left a mutant in this '
             'file, and the file was changed since. It was left as it is. The '
             'content of before that run is in $backup/lib/a.dart; delete '
             'that file when you have compared the two',
-        'dart_mutant: FAILED (nothing was run)',
+        'dart_mutant run: FAILED (nothing was run)',
       ]);
       expect(package.read('lib/a.dart'), '$mutant// my edit\n');
       expect(package.read('$backup/lib/a.dart'), sourceA);
@@ -910,11 +939,11 @@ void main() {
       package.write('$backup/lib/old.dart', 'int old() => 1;\n');
       expect(await mutate(), 1);
       expect(package.err, [
-        'dart_mutant: lib/old.dart: an interrupted run left a backup of this '
+        'dart_mutant run: lib/old.dart: an interrupted run left a backup of this '
             'file, and the file is gone. The content of before that run is '
             'in $backup/lib/old.dart; delete that file when you have '
             'compared the two',
-        'dart_mutant: FAILED (nothing was run)',
+        'dart_mutant run: FAILED (nothing was run)',
       ]);
     });
   });
@@ -936,10 +965,10 @@ void main(List<String> arguments) {
       package.fakeTest('lib/a.dart', []);
       expect(await mutate(['lib/a.dart']), 1);
       expect(package.err, [
-        'dart_mutant: lib/a.dart changed during the run. It was left as it '
+        'dart_mutant run: lib/a.dart changed during the run. It was left as it '
             'is, possibly with a mutant in it. The content of before the run '
             'is in $backup/lib/a.dart',
-        'dart_mutant: FAILED (the run was stopped)',
+        'dart_mutant run: FAILED (the run was stopped)',
       ]);
       expect(package.read('lib/a.dart'), '// saved by somebody\n');
       expect(package.read('$backup/lib/a.dart'), sourceA);
@@ -957,9 +986,9 @@ void main(List<String> arguments) {
       package.fakeTest('lib/a.dart', []);
       expect(await mutate(['lib/a.dart']), 1);
       expect(package.err, [
-        'dart_mutant: lib/a.dart changed while its tests ran. Nothing was '
+        'dart_mutant run: lib/a.dart changed while its tests ran. Nothing was '
             'written to it; run again',
-        'dart_mutant: FAILED (the run was stopped)',
+        'dart_mutant run: FAILED (the run was stopped)',
       ]);
       expect(package.read('lib/a.dart'), '// saved by somebody\n');
       expect(package.file('$backup/lib/a.dart').existsSync(), isFalse);
@@ -1087,7 +1116,7 @@ void main(List<String> arguments) {
         package.err.first,
         'dart_mutant: ${package.path}/notes.html exists and is not a report '
         'page of dart_mutant. It is not overwritten; give another --html, or '
-        'delete the file',
+        'delete the file\n',
       );
       expect(package.read('notes.html'), '<html><body>mine</body></html>\n');
       expect(package.runs, isEmpty);
@@ -1131,7 +1160,7 @@ void main(List<String> arguments) {
       );
       expect(
         package.err.first,
-        'dart_mutant: --html ${package.path}/pages.html is a directory',
+        'dart_mutant: --html ${package.path}/pages.html is a directory\n',
       );
       expect(package.runs, isEmpty);
     });
@@ -1145,8 +1174,8 @@ void main(List<String> arguments) {
       expect(await mutate(['lib/a.dart', '--html', page]), 1);
       expect(statusesOf('lib/a.dart'), ['Killed']);
       expect(package.err, [
-        startsWith('dart_mutant: cannot write the page $page ('),
-        'dart_mutant: FAILED (1 mutants / killed 1 / survived 0 / timeout 0 '
+        startsWith('dart_mutant run: cannot write the page $page ('),
+        'dart_mutant run: FAILED (1 mutants / killed 1 / survived 0 / timeout 0 '
             '/ compile error 0)',
       ]);
       expect(

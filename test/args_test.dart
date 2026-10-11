@@ -7,7 +7,7 @@ void main() {
   test('files, options in either form, and the command after --', () {
     final args = runArgs([
       'run',
-      '--root',
+      '--dir',
       'app',
       'lib/a.dart',
       '--report=out.json',
@@ -24,7 +24,7 @@ void main() {
       'test',
       '--force',
     ]);
-    expect(args.root, 'app');
+    expect(args.dir, 'app');
     expect(args.plan, isNull);
     expect(args.report, 'out.json');
     expect(args.html, 'out.html');
@@ -36,7 +36,7 @@ void main() {
 
   test('the defaults', () {
     final args = runArgs(['run', '--plan', 'plan.json']);
-    expect(args.root, '.');
+    expect(args.dir, '.');
     expect(args.plan, 'plan.json');
     expect(args.report, isNull);
     expect(args.html, isNull);
@@ -66,7 +66,7 @@ void main() {
   test('RunArgs without arguments is a run in the current directory that '
       'reuses results', () {
     const args = RunArgs();
-    expect(args.root, '.');
+    expect(args.dir, '.');
     expect(args.force, isFalse);
     expect(args.plan, isNull);
     expect(args.report, isNull);
@@ -165,7 +165,7 @@ void main() {
         'merge runs no tests',
       ),
       for (final option in [
-        '--root',
+        '--dir',
         '--plan',
         '--only',
         '--jobs',
@@ -175,12 +175,12 @@ void main() {
         (
           option,
           ['merge', 'a.json', '--report', 'b.json', option, '1/2'],
-          'unknown option "$option" for merge',
+          'unknown argument for merge: $option',
         ),
       (
         'an option of no command',
-        ['merge', 'a.json', '--report', 'b.json', '--fast'],
-        'unknown option "--fast" for merge',
+        ['merge', 'a.json', '--report', 'b.json', '--fast=1'],
+        'unknown argument for merge: --fast=1',
       ),
       (
         '--report twice',
@@ -236,6 +236,15 @@ void main() {
     expect(parseArgs(['--help']), isA<HelpArgs>());
     expect(parseArgs(['run', 'a.dart', '-h']), isA<HelpArgs>());
     expect(parseArgs(['--version']), isA<VersionArgs>());
+    expect(parseArgs(['-v']), isA<VersionArgs>());
+    expect(parseArgs(['run', 'a.dart', '-v']), isA<VersionArgs>());
+    // As test_gates reads them: the version when both are asked for.
+    expect(parseArgs(['--help', '--version']), isA<VersionArgs>());
+    expect(parseArgs(['-v', '-h']), isA<VersionArgs>());
+    expect(
+      parseArgs(['run', 'a.dart', '--', 'dart', 'test', '-v']),
+      isA<RunCommandArgs>(),
+    );
     expect(
       parseArgs(['run', 'a.dart', '--', 'dart', 'test', '--help']),
       isA<RunCommandArgs>(),
@@ -244,23 +253,47 @@ void main() {
 
   for (final (name, argv, message) in [
     ('nothing', <String>[], 'no command given'),
-    ('another command', ['test'], 'unknown command "test"'),
-    ('another command and more', ['test', 'a.dart'], 'unknown command "test"'),
+    ('another command', ['test'], 'unknown command: test'),
+    ('an option and no command', ['--fast'], 'unknown argument: --fast'),
+    (
+      'an option in front of the command',
+      ['--dir', 'a', 'run', 'a.dart'],
+      'unknown argument: --dir',
+    ),
+    ('another command and more', ['test', 'a.dart'], 'unknown command: test'),
     ('only a test command', ['--', 'dart', 'test'], 'no command given'),
     ('-- in front of run', ['--', 'run', 'a.dart'], 'no command given'),
     ('an empty value after =', ['run', 'a.dart', '--only='], '--only needs a'),
-    ('an unknown option', ['run', 'a.dart', '--fast'], 'unknown option'),
-    ('a short option', ['run', 'a.dart', '-f'], 'unknown option "-f"'),
-    ('--force with a value', ['run', 'a.dart', '--force=1'], 'takes no value'),
+    (
+      'an unknown option',
+      ['run', 'a.dart', '--fast'],
+      'unknown argument for run: --fast',
+    ),
+    (
+      'an unknown option with a value',
+      ['run', 'a.dart', '--fast=1'],
+      'unknown argument for run: --fast=1',
+    ),
+    (
+      'the old name of --dir',
+      ['run', 'a.dart', '--root', 'a'],
+      'unknown argument for run: --root',
+    ),
+    ('a short option', ['run', 'a.dart', '-f'], 'unknown argument for run: -f'),
+    (
+      '--force with a value',
+      ['run', 'a.dart', '--force=1'],
+      '--force does not take a value',
+    ),
     (
       '--schemata with a value',
       ['run', 'a.dart', '--schemata=1'],
-      '--schemata takes no value',
+      '--schemata does not take a value',
     ),
     (
       '--no-schemata with a value',
       ['run', 'a.dart', '--no-schemata=0'],
-      '--no-schemata takes no value',
+      '--no-schemata does not take a value',
     ),
     (
       '--schemata twice',
@@ -276,8 +309,8 @@ void main() {
     ('an empty value', ['run', 'a.dart', '--report='], 'needs a value'),
     (
       'an option twice',
-      ['run', 'a.dart', '--root', 'a', '--root', 'b'],
-      '--root is given twice',
+      ['run', 'a.dart', '--dir', 'a', '--dir', 'b'],
+      '--dir is given twice',
     ),
     (
       '--html without .html',
@@ -307,9 +340,21 @@ void main() {
     });
   }
 
+  test('the help starts and ends as the one of test_gates does', () {
+    expect(
+      help,
+      startsWith(
+        'dart_mutant — mutation testing for Dart and Flutter\n\nUsage:\n',
+      ),
+    );
+    expect(help, contains('\n  -h, --help       Show this help\n'));
+    expect(help, contains('\n  -v, --version    Show the version\n'));
+    expect(help, contains('\nExit codes:\n  0    no mutant survived\n'));
+  });
+
   test('the help names every option', () {
     for (final option in [
-      '--root',
+      '--dir <package>',
       '--plan',
       '--only',
       '--report',
