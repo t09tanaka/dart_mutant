@@ -40,7 +40,7 @@ void main() {
     'run',
     '--jobs',
     '1',
-    '--root',
+    '--dir',
     package.path,
     ...arguments,
     '--',
@@ -422,7 +422,7 @@ void main() {
         'run',
         '--jobs',
         '1',
-        '--root',
+        '--dir',
         package.path,
         'lib/a.dart',
         '--',
@@ -467,11 +467,11 @@ void main() {
       ('an unknown command', ['mutate'], 'unknown command "mutate"'),
       ('an unknown option', ['run', '--fast'], 'unknown option "--fast"'),
       ('nothing to mutate', ['run'], 'nothing to mutate'),
-      ('an option without its value', ['run', '--root'], '--root needs a'),
+      ('an option without its value', ['run', '--dir'], '--dir needs a'),
       ('-- without a command', ['run', 'lib/a.dart', '--'], '"--" must be'),
       (
         'a root that is not there',
-        ['run', '--root', '/no/such/dir', 'lib/a.dart'],
+        ['run', '--dir', '/no/such/dir', 'lib/a.dart'],
         'is not a directory',
       ),
     ]) {
@@ -535,7 +535,7 @@ void main() {
 
     Future<int> heavy() => runMutation(
       RunArgs(
-        root: package.path,
+        dir: package.path,
         targets: const ['lib/a.dart', 'lib/b.dart'],
         command: package.fake,
         jobs: 1,
@@ -606,7 +606,7 @@ void main() {
   group('timeouts', () {
     Future<int> quick([bool force = false]) => runMutation(
       RunArgs(
-        root: package.path,
+        dir: package.path,
         targets: const ['lib/a.dart', 'lib/b.dart'],
         command: package.fake,
         force: force,
@@ -725,7 +725,7 @@ void main() {
           'run',
           '--jobs',
           '1',
-          '--root',
+          '--dir',
           package.path,
           'lib/a.dart',
           '--',
@@ -747,7 +747,7 @@ void main() {
           'run',
           '--jobs',
           '1',
-          '--root',
+          '--dir',
           package.path,
           'lib/a.dart',
           'lib/b.dart',

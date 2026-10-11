@@ -56,7 +56,7 @@ void main() {
     List<String> files = const ['lib/a.dart', 'lib/b.dart'],
   }) => run([
     'run',
-    '--root',
+    '--dir',
     package.path,
     '--jobs',
     '$jobs',

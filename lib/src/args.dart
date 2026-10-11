@@ -7,7 +7,7 @@ const schemataByDefault = false;
 /// The command line of `dart_mutant run`.
 class RunArgs {
   const RunArgs({
-    this.root = '.',
+    this.dir = '.',
     this.plan,
     this.report,
     this.html,
@@ -20,8 +20,8 @@ class RunArgs {
     this.command = const [],
   });
 
-  /// `--root`: the package to mutate.
-  final String root;
+  /// `--dir`: the package to mutate.
+  final String dir;
 
   /// `--plan`: the plan file.
   final String? plan;
@@ -108,7 +108,7 @@ class UsageError implements Exception {
 }
 
 const _valueOptions = [
-  '--root',
+  '--dir',
   '--plan',
   '--report',
   '--html',
@@ -116,6 +116,11 @@ const _valueOptions = [
   '--jobs',
   '--shard',
 ];
+
+/// The options that take no value.
+const _flags = ['--force', '--schemata', '--no-schemata'];
+
+const _options = [..._valueOptions, ..._flags];
 
 /// The options of `merge`, of those above.
 const _mergeOptions = ['--report', '--html'];
@@ -128,18 +133,18 @@ ParsedArgs parseArgs(List<String> argv) {
   final own = argv.takeWhile((argument) => argument != '--').toList();
   final rest = argv.skip(own.length).toList();
   final command = rest.skip(1).toList();
+  if (own.contains('--version') || own.contains('-v')) {
+    return const VersionArgs();
+  }
   if (own.contains('--help') || own.contains('-h')) {
     return const HelpArgs();
-  }
-  if (own.contains('--version')) {
-    return const VersionArgs();
   }
   if (own.isEmpty) {
     throw UsageError('no command given');
   }
   final merge = own.first == 'merge';
   if (own.first != 'run' && !merge) {
-    throw UsageError('unknown command "${own.first}"');
+    throw UsageError('unknown command: ${own.first}');
   }
   if (merge && rest.isNotEmpty) {
     throw UsageError('merge runs no tests: "--" and a command do not belong');
@@ -148,7 +153,7 @@ ParsedArgs parseArgs(List<String> argv) {
     throw UsageError('"--" must be followed by the command that runs tests');
   }
 
-  var root = '.';
+  var dir = '.';
   String? plan;
   String? report;
   String? html;
@@ -169,28 +174,24 @@ ParsedArgs parseArgs(List<String> argv) {
     final parts = argument.split('=');
     final name = parts.first;
     final inline = parts.length > 1;
-    if (merge && !_mergeOptions.contains(name)) {
-      throw UsageError('unknown option "$name" for merge');
+    if (!_options.contains(name) || (merge && !_mergeOptions.contains(name))) {
+      throw UsageError(
+        'unknown argument for ${merge ? 'merge' : 'run'}: $argument',
+      );
     }
-    if (name == '--force') {
+    if (!_valueOptions.contains(name)) {
       if (inline) {
-        throw UsageError('--force takes no value');
+        throw UsageError('$name does not take a value');
       }
-      force = true;
-      continue;
-    }
-    if (name == '--schemata' || name == '--no-schemata') {
-      if (inline) {
-        throw UsageError('$name takes no value');
+      if (name == '--force') {
+        force = true;
+        continue;
       }
       if (schemata != null) {
         throw UsageError('--schemata or --no-schemata is given twice');
       }
       schemata = name == '--schemata';
       continue;
-    }
-    if (!_valueOptions.contains(name)) {
-      throw UsageError('unknown option "$name"');
     }
     final String value;
     if (inline) {
@@ -208,8 +209,8 @@ ParsedArgs parseArgs(List<String> argv) {
       throw UsageError('$name is given twice');
     }
     switch (name) {
-      case '--root':
-        root = value;
+      case '--dir':
+        dir = value;
       case '--plan':
         plan = value;
       case '--report':
@@ -263,7 +264,7 @@ ParsedArgs parseArgs(List<String> argv) {
   }
   return RunCommandArgs(
     RunArgs(
-      root: root,
+      dir: dir,
       plan: plan,
       report: report,
       html: html,
@@ -279,7 +280,7 @@ ParsedArgs parseArgs(List<String> argv) {
 }
 
 const help = '''
-dart_mutant: mutation testing for Dart and Flutter.
+dart_mutant — mutation testing for Dart and Flutter
 
 Usage:
   dart_mutant run [options] <file or glob>... [-- <test command>]
@@ -295,14 +296,14 @@ With more than one job the mutants are put into copies of the package (in
 the files are changed in place and put back.
 
 Options:
-  --root <dir>     The package to mutate (default: the current directory).
-                   The files and globs, and the paths inside a plan, are
-                   relative to it.
+  --dir <package>  The package to mutate (default: .). The files and
+                   globs, and the paths inside a plan, are relative to it.
   --plan <file>    A JSON file (a path as your shell sees it) that lists the
                    files to mutate and, for each, the test files to run:
                      {"version": 1, "targets": [
                        {"file": "lib/a.dart", "tests": ["test/a_test.dart"]}]}
-                   Without it the tests of lib/a.dart are lib/a_test.dart and
+                   A key it does not know is wrong usage. Without a plan the
+                   tests of lib/a.dart are lib/a_test.dart and
                    test/a_test.dart, whichever exist.
   --only <file>    Limit the run to this file of the plan or of the arguments.
                    May be given more than once. The report keeps what it says
@@ -333,8 +334,8 @@ Options:
                    in working copies. "--reporter json" is appended to the
                    test command as well.
   --no-schemata    One start of the test runner per mutant (the default).
-  -h, --help       This text.
-  --version        The version of this tool.
+  -h, --help       Show this help
+  -v, --version    Show the version
   -- <command>     The command that runs test files (default:
                    "flutter test --no-pub" for a Flutter package, "dart test"
                    otherwise). "--fail-fast --timeout 10s" and the test files
@@ -346,12 +347,12 @@ page). It fails when a part is missing or given twice, or when the parts
 are not of the same run: another number of parts, other sources or
 mutants, another version of this tool.
 
-Exit code:
+Exit codes:
   0    no mutant survived
   1    a mutant survived, or a file could not be mutation tested, or
        another run is at work in the package (nothing is changed then),
        or the parts given to merge are not the parts of one run (no
        report is written then)
-  2    wrong usage
+  2    wrong usage, or a plan file that cannot be used
   130 / 143 / 129   interrupted (SIGINT / SIGTERM / SIGHUP); the working
                    copies were removed, or the files were put back''';

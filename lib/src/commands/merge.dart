@@ -56,11 +56,11 @@ int runMerge(MergeArgs args, Io io) {
 
   final merged = mergeParts(parts);
   if (merged.problems.isNotEmpty) {
-    io.err('The parts are not the parts of one run:');
+    io.err('$executable merge: the parts are not the parts of one run');
     for (final problem in merged.problems) {
       io.err('  - $problem');
     }
-    io.err('$executable: FAILED (nothing was merged)');
+    io.err('$executable merge: FAILED (nothing was merged)');
     return 1;
   }
   final runs = merged.files;
@@ -70,18 +70,18 @@ int runMerge(MergeArgs args, Io io) {
   }
   final survivors = survivorLines(runs);
   if (survivors.isNotEmpty) {
-    io.out('Survived:');
-    survivors.forEach(io.out);
+    io.err('$executable merge: ${survivors.length} surviving mutant(s)');
+    survivors.forEach(io.err);
   }
   if (pageProblem != null) {
-    io.err('$executable: $pageProblem');
+    io.err('$executable merge: $pageProblem');
   }
   final summary =
       '(${parts.length} part(s) merged: ${totalCounts(runs.values)})';
   if (survivors.isEmpty && pageProblem == null) {
-    io.out('$executable: OK $summary');
+    io.out('$executable merge: OK $summary');
     return 0;
   }
-  io.err('$executable: FAILED $summary');
+  io.err('$executable merge: FAILED $summary');
   return 1;
 }

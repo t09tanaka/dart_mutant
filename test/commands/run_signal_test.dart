@@ -115,7 +115,7 @@ void main() {
       'run',
       '--jobs',
       '1',
-      '--root',
+      '--dir',
       package.path,
       'lib/a.dart',
       '--',
@@ -212,7 +212,7 @@ void main() {
       package.fakeTest('lib/a.dart', ['expect: x * y - x']);
       final code = await run([
         'run',
-        '--root',
+        '--dir',
         package.path,
         '--jobs',
         '2',
@@ -229,7 +229,7 @@ void main() {
   group('a second run while the first is at work', () {
     Future<int> second(int jobs) => run([
       'run',
-      '--root',
+      '--dir',
       package.path,
       '--jobs',
       '$jobs',

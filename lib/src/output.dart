@@ -4,12 +4,13 @@ class Io {
   /// line. The command line passes `stdout.writeln` and `stderr.writeln`.
   const Io({required this.out, required this.err});
 
-  /// Receives the lines of the result: the progress, the survivors and the
-  /// summary of a run without one.
+  /// Receives the lines of the result: the progress, and the summary of a
+  /// run without a survivor.
   final void Function(String line) out;
 
-  /// Receives the lines that say what is wrong: wrong usage, a file that
-  /// could not be mutation tested, the summary of a run that failed.
+  /// Receives the lines that say what is wrong: wrong usage, the survivors,
+  /// a file that could not be mutation tested, the summary of a run that
+  /// failed.
   final void Function(String line) err;
 }
 

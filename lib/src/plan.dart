@@ -52,17 +52,23 @@ final _leadingDots = RegExp(r'^(\./)+');
 /// ```
 ///
 /// The order of `targets` is the order of the run and of the report. A file
-/// may be listed once.
+/// may be listed once. A key that is not one of these is refused: a
+/// misspelt key must not be a plan that says less than was meant.
 List<Target> parsePlan(String text) {
   final Object? decoded;
   try {
     decoded = jsonDecode(text);
   } on FormatException catch (error) {
-    throw PlanError('is not valid JSON: ${error.message}');
+    throw PlanError('not valid JSON: ${error.message}');
   }
   final root = asObject(decoded);
   if (root == null) {
     throw PlanError('must be a JSON object');
+  }
+  for (final key in root.keys) {
+    if (key != 'version' && key != 'targets') {
+      throw PlanError('unknown top-level key ${jsonEncode(key)}');
+    }
   }
   if (root['version'] != 1) {
     throw PlanError('"version" must be 1');
@@ -76,6 +82,12 @@ List<Target> parsePlan(String text) {
   for (final (index, item) in rawTargets.indexed) {
     final at = 'targets[$index]';
     final target = asObject(item);
+    // First: `"test"` for `"tests"` is then named, not just missed.
+    for (final key in (target ?? const {}).keys) {
+      if (key != 'file' && key != 'tests') {
+        throw PlanError('$at: unknown key ${jsonEncode(key)}');
+      }
+    }
     final file = target?['file'];
     final tests = asStrings(target?['tests']);
     if (file is! String || tests == null) {

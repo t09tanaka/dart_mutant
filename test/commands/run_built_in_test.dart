@@ -310,7 +310,7 @@ dev_dependencies:
     final before = tree();
     await runMutation(
       RunArgs(
-        root: dir.path,
+        dir: dir.path,
         targets: plan == null ? [file] : const [],
         plan: plan,
         force: force,

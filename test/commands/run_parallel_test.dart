@@ -55,7 +55,7 @@ void main() {
     bool force = true,
   }) => run([
     'run',
-    '--root',
+    '--dir',
     package.path,
     '--jobs',
     '$jobs',
@@ -234,7 +234,7 @@ void main() {
   group('memory limit', () {
     Future<int> heavy(int jobs) => runMutation(
       RunArgs(
-        root: package.path,
+        dir: package.path,
         targets: const ['lib/b.dart'],
         command: package.sharedFake,
         jobs: jobs,
@@ -310,7 +310,7 @@ void main() {
   group('time limit', () {
     Future<int> quick(int jobs) => runMutation(
       RunArgs(
-        root: package.path,
+        dir: package.path,
         targets: const ['lib/b.dart'],
         command: package.sharedFake,
         jobs: jobs,

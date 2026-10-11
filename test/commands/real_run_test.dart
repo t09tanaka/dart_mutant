@@ -51,7 +51,7 @@ void main() {
       'run',
       '--jobs',
       '1',
-      '--root',
+      '--dir',
       dir.path,
       '--plan',
       '${dir.path}/plan.json',

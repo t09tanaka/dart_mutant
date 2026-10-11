@@ -392,8 +392,9 @@ String totalCounts(Iterable<FileRun> runs) => _counts(runs);
 String _oneLine(String text) => text.replaceAll(RegExp(r'\s+'), ' ').trim();
 
 /// The mutants no test noticed, one line each:
-/// `file:line:column Mutator: original → replacement`. Text that spans lines
-/// is shown on one; the report has it as it is.
+/// `file:line:column / Mutator / original → replacement (Survived)`, the
+/// line `test_gates` writes for a mutant. Text that spans lines is shown on
+/// one; the report has it as it is.
 List<String> survivorLines(Map<String, FileRun> files) => [
   for (final MapEntry(key: path, value: run) in files.entries)
     for (final result in run.results)
@@ -404,7 +405,8 @@ List<String> survivorLines(Map<String, FileRun> files) => [
             result.mutant.offset,
             result.mutant.end,
           );
-          return '  $path:${at.line}:${at.column} ${result.mutant.mutator}: '
-              '${_oneLine(original)} → ${_oneLine(result.mutant.replacement)}';
+          return '  - $path:${at.line}:${at.column} / '
+              '${result.mutant.mutator} / ${_oneLine(original)} → '
+              '${_oneLine(result.mutant.replacement)} ($survived)';
         }(),
 ];
