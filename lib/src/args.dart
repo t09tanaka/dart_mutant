@@ -1,3 +1,7 @@
+/// Whether the mutants of a file are built into one program when neither
+/// `--schemata` nor `--no-schemata` is given.
+const schemataByDefault = false;
+
 /// The command line of `dart_mutant run`.
 class RunArgs {
   const RunArgs({
@@ -7,6 +11,7 @@ class RunArgs {
     this.html,
     this.force = false,
     this.jobs,
+    this.schemata,
     this.only = const [],
     this.targets = const [],
     this.command = const [],
@@ -31,6 +36,10 @@ class RunArgs {
   /// `--jobs`: how many test runs are started at a time. `null` when it is
   /// not given: the number then depends on the machine.
   final int? jobs;
+
+  /// `--schemata` (true) or `--no-schemata` (false): whether the mutants of
+  /// a file are built into one program. `null` when neither is given.
+  final bool? schemata;
 
   /// `--only`, once per file: the run is limited to these targets.
   final List<String> only;
@@ -109,6 +118,7 @@ ParsedArgs parseArgs(List<String> argv) {
   String? html;
   var force = false;
   int? jobs;
+  bool? schemata;
   final only = <String>[];
   final targets = <String>[];
   final seen = <String>{};
@@ -127,6 +137,16 @@ ParsedArgs parseArgs(List<String> argv) {
         throw UsageError('--force takes no value');
       }
       force = true;
+      continue;
+    }
+    if (name == '--schemata' || name == '--no-schemata') {
+      if (inline) {
+        throw UsageError('$name takes no value');
+      }
+      if (schemata != null) {
+        throw UsageError('--schemata or --no-schemata is given twice');
+      }
+      schemata = name == '--schemata';
       continue;
     }
     if (!_valueOptions.contains(name)) {
@@ -187,6 +207,7 @@ ParsedArgs parseArgs(List<String> argv) {
       html: html,
       force: force,
       jobs: jobs,
+      schemata: schemata,
       only: only,
       targets: targets,
       command: command,

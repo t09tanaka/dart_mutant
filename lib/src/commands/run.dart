@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
 
 import '../args.dart';
+import '../driver.dart';
 import '../html_report.dart';
 import '../io/analysis.dart';
 import '../io/files.dart';
@@ -17,7 +19,9 @@ import '../mutation_run.dart';
 import '../output.dart';
 import '../parallel.dart';
 import '../plan.dart';
+import '../schemata.dart';
 import '../syntax_mutators.dart';
+import 'built_in.dart';
 
 /// Where a run keeps what must survive it, below the package. `.dart_tool`
 /// is ignored by git in every Dart project.
@@ -699,13 +703,16 @@ Future<int> _locked(
     // No pubspec: `dart test` says what is wrong.
   }
   var jobs = args.jobs ?? defaultJobs(Platform.numberOfProcessors);
-  if (jobs > 1) {
-    String? packageConfig;
-    try {
-      packageConfig = readText(_inPackage(root, packageConfigPath));
-    } on FileSystemException {
-      // The obstacle below.
-    }
+  // With the mutants built in, every test run is in a working copy, also
+  // when they are run one at a time.
+  var schemata = args.schemata ?? schemataByDefault;
+  String? packageConfig;
+  try {
+    packageConfig = readText(_inPackage(root, packageConfigPath));
+  } on FileSystemException {
+    // The obstacle below.
+  }
+  if (jobs > 1 || schemata) {
     final obstacle = copyObstacle(
       root: root,
       resolvedRoot: Directory(root).resolveSymbolicLinksSync(),
@@ -718,11 +725,13 @@ Future<int> _locked(
         'The mutants are run one at a time, in place (--jobs 1)',
       );
       jobs = 1;
+      schemata = false;
     }
   }
-  final copies = jobs > 1
+  final copies = jobs > 1 || schemata
       ? _Copies(Directory(root).resolveSymbolicLinksSync(), state.work, jobs)
       : null;
+  final testLibrary = testLibraryOf(packageConfig, flutter: flutter);
   // True once a file of the package was written by this run.
   var inPlace = false;
   final command = testCommandFor(flutter: flutter, override: args.command);
@@ -816,6 +825,10 @@ Future<int> _locked(
       final List<Mutant> mutants;
       final List<String?> statuses;
       final List<String?> reasons;
+      // The mutants of the file built into it, when that is asked for and
+      // can be done, or else why it is not done.
+      BuiltIn? built;
+      String? notBuilt;
       final reusable = reusableResults(carried[path], input);
       if (reusable != null) {
         mutants = [for (final result in reusable) result.mutant];
@@ -850,6 +863,35 @@ Future<int> _locked(
               await analysis.compileErrorOf(path, mutant.applyTo(source)),
             );
           }
+          final compiling = [
+            for (final (index, reason) in reasons.indexed)
+              if (reason == null) index,
+          ];
+          if (schemata &&
+              compiling.isNotEmpty &&
+              reasons.length == mutants.length) {
+            notBuilt = testLibrary == null
+                ? 'the package has neither test nor flutter_test'
+                : fileObstacle(source) ??
+                      testsObstacle(
+                        testTexts,
+                        taken: existsExact(root, driverPathOf(target.tests)),
+                      );
+            if (notBuilt == null) {
+              try {
+                built = await buildIn(
+                  analysis,
+                  path,
+                  source,
+                  mutants,
+                  compiling,
+                  stopped: () => signals.signal != null,
+                );
+              } on AnalysisUnavailable catch (error) {
+                notBuilt = 'cannot be analyzed that way (${error.message})';
+              }
+            }
+          }
           await analysis.release(path);
           // Nothing is in the file yet: an analyzer that gives up on this
           // file (it is excluded from every context, say) fails the file,
@@ -870,7 +912,7 @@ Future<int> _locked(
       }
 
       final milliseconds = List<int>.filled(mutants.length, 0);
-      final pending = [
+      var pending = [
         for (var index = 0; index < mutants.length; index++)
           if (statuses[index] == null) index,
       ];
@@ -885,16 +927,98 @@ Future<int> _locked(
         String? instead = file.path == plain
             ? null
             : 'is behind a symbolic link';
-        if (instead == null) {
+        if (instead == null && notBuilt != null) {
+          io.err(
+            '$executable: $path $notBuilt; its mutants are not built into '
+            'one program',
+          );
+        }
+        final refused = statuses.where((s) => s == compileError).length;
+        var said = reusable != null || refused == 0;
+        if (instead == null && built != null && built.ids.isNotEmpty) {
+          // One driver has to start, compile and run the tests without a
+          // mutant before its first mutant: more of them only pay when
+          // each has enough to do.
+          final drivers = min(
+            copies.jobs,
+            (built.ids.length / mutantsBetweenChecks).ceil(),
+          );
+          io.out(
+            '  $path: ${built.ids.length} of ${mutants.length} mutant(s) '
+            'built into one program, with '
+            '"${driverCommand(command, driverPathOf(target.tests)).join(' ')}"'
+            '${drivers == 1 ? '' : ', $drivers at a time'}'
+            '${said ? '' : ' ($refused do not compile)'}',
+          );
+          said = true;
+          announced = true;
+          List<String>? used;
+          try {
+            used = copies.first(drivers);
+          } on FileSystemException {
+            // The run from working copies below says so.
+          }
+          if (used != null) {
+            final outcome = await runBuiltIn(
+              copies: used,
+              root: root,
+              path: path,
+              original: original,
+              content: built.content,
+              ids: built.ids,
+              tests: target.tests,
+              command: command,
+              testLibrary: testLibrary!,
+              package: packageNameOf(pubspec),
+              limitOf: limitOf,
+              signals: signals,
+            );
+            if (outcome.aborted != null) {
+              aborted = outcome.aborted;
+            }
+            if (signals.signal != null || aborted != null) {
+              break;
+            }
+            if (outcome.failure != null) {
+              io.err(
+                '$executable: $path: ${outcome.failure}; its mutants are '
+                'run one at a time',
+              );
+            } else {
+              for (final MapEntry(key: id, value: took)
+                  in outcome.killed.entries) {
+                statuses[id] = killed;
+                milliseconds[id] = took;
+              }
+              final left = built.left.length;
+              final unsettled = built.ids.length - outcome.killed.length;
+              io.out(
+                '  $path: ${outcome.killed.length} killed with the mutants '
+                'built in'
+                '${left == 0 ? '' : '; $left cannot be built in '
+                          '(${built.reasons})'}'
+                '${unsettled == 0 ? '' : '; $unsettled not killed that way '
+                          'are measured one at a time'}'
+                '${outcome.again == 0 ? '' : '; ${outcome.again} did not '
+                          'end, and the driver was started again'}',
+              );
+            }
+            pending = [
+              for (final index in pending)
+                if (statuses[index] == null) index,
+            ];
+            remaining = pending;
+          }
+        }
+        if (instead == null && pending.isNotEmpty) {
           final workers = pending.length < copies.jobs
               ? pending.length
               : copies.jobs;
           final run = mutantCommand(command, target.tests);
-          final refused = statuses.where((s) => s == compileError).length;
           io.out(
             '  $path: ${pending.length} of ${mutants.length} mutant(s) with '
             '"${run.join(' ')}", $workers at a time'
-            '${reusable != null || refused == 0 ? '' : ' ($refused do not compile)'}',
+            '${said ? '' : ' ($refused do not compile)'}',
           );
           announced = true;
           final outcome = await _runInCopies(

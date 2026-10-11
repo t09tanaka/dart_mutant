@@ -159,12 +159,19 @@ const _signalGrace = Duration(milliseconds: 250);
 /// When [signals] reports a signal, the child is ended and the result carries
 /// the signal. When the command runs longer than [timeout], it is ended with
 /// everything it started and the result says so.
+///
+/// [onLine] gets every line of the standard output when it is there (with
+/// [capture]), and [stop] ends the command the way [timeout] does when it
+/// completes: for a caller that reads the output to decide how long the
+/// command may go on.
 Future<CommandResult> runCommand(
   List<String> command, {
   required String workingDirectory,
   required bool capture,
   required SignalWatch signals,
   Duration? timeout,
+  void Function(String line)? onLine,
+  Future<void>? stop,
 }) async {
   final Process process;
   try {
@@ -183,10 +190,14 @@ Future<CommandResult> runCommand(
   final drained = <Future<void>>[];
   if (capture) {
     for (final stream in [process.stdout, process.stderr]) {
+      final text = stream.transform(const Utf8Decoder(allowMalformed: true));
       drained.add(
-        stream
-            .transform(const Utf8Decoder(allowMalformed: true))
-            .forEach(output.write),
+        onLine == null || stream != process.stdout
+            ? text.forEach(output.write)
+            : text.transform(const LineSplitter()).forEach((line) {
+                output.writeln(line);
+                onLine(line);
+              }),
       );
     }
   }
@@ -199,6 +210,7 @@ Future<CommandResult> runCommand(
     process.exitCode,
     signals.received,
     limit.future,
+    ?stop?.then((_) => const _LimitReached()),
   ]);
   timer?.cancel();
   if (ended is ProcessSignal) {
