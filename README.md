@@ -637,7 +637,7 @@ The script turns the gates into a plan, runs `dart_mutant run --plan` from this 
 
 - [test_gates](https://github.com/t09tanaka/test-gates-dart) (pub.dev): gates for Dart and Flutter. A list of the files that must not be wrong, each one pure, covered completely, guarded by a negative control and by a verdict on a mutation report such as the one this tool writes.
 - [test-gates](https://github.com/t09tanaka/test-gates) (npm `@t09tanaka/test-gates`): the same gates for JavaScript and TypeScript, with Stryker as the mutation tool.
-- [contract-fixtures](https://github.com/t09tanaka/contract-fixtures) (npm and pub.dev): shared request and response fixtures that keep an API and its clients in step.
+- [contract-fixtures](https://github.com/t09tanaka/contract-fixtures) (TypeScript and Dart): shared request and response fixtures that keep an API and its clients in step.
 
 ## License
 
