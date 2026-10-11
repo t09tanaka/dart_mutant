@@ -12,11 +12,11 @@ dart_mutant run lib/discount.dart
 
 ```
   lib/discount.dart: 18 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 3 at a time (4 do not compile)
-  lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (12.8s)
-Survived:
-  lib/discount.dart:7:30 NumberLiteral: 0 → 1
-  lib/discount.dart:8:39 MethodExpression: round → ceil
-dart_mutant: FAILED (22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run))
+  lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (10.0s)
+dart_mutant run: 2 surviving mutant(s)
+  - lib/discount.dart:7:30 / NumberLiteral / 0 → 1 (Survived)
+  - lib/discount.dart:8:39 / MethodExpression / round → ceil (Survived)
+dart_mutant run: FAILED (22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run))
 ```
 
 (`, 3 at a time` is what a machine with 12 processors says; see `--jobs`.)

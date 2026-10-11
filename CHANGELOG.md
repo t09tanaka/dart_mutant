@@ -1,12 +1,21 @@
+# Changelog
+
 ## 0.1.0
 
-2026-10-11. The first version.
+First version.
 
 - `dart_mutant run`: mutation test of the files given as arguments (files or
   globs; the tests are the `_test.dart` next to the file or its mirror under
   `test/`), or of the files of a plan (`--plan`, a JSON file that names the
-  tests of each file). `--only`, `--report`, `--html`, `--force`, `--jobs`,
-  and `-- <command>` for another test command.
+  tests of each file). `--dir`, `--only`, `--report`, `--html`, `--force`,
+  `--jobs`, and `-- <command>` for another test command.
+- The command line follows `test_gates`: `--dir` for the package, `-h` and
+  `-v`, wrong usage answered with the message, an empty line and the help
+  (exit code 2), a last line `dart_mutant run: OK (…)` or `FAILED (…)`, and
+  a survivor as `file:line:column / Mutator / original → replacement
+  (Survived)`.
+- A plan file with a key it does not know is refused (exit code 2), as
+  `test-gates.json` refuses one: a misspelt key is not silently ignored.
 - Syntax mutators: the twelve of `test_gates` 0.1.0, with the same names,
   places, replacements and order.
 - Typed mutators, from the types the analyzer resolves: `MethodExpression`,
