@@ -257,6 +257,14 @@ Options:
   --jobs <n>       How many test runs are started at a time (default: a
                    quarter of the processors, at least 1 and at most 4).
                    1 changes the files in place, one mutant at a time.
+  --schemata       Experimental. Build the mutants of a file into one
+                   program and run its tests on all of them in one process,
+                   instead of one start of the test runner per mutant. Only
+                   "killed" is taken from that; every other mutant is run
+                   the usual way, and so is what cannot be built in. Always
+                   in working copies. "--reporter json" is appended to the
+                   test command as well.
+  --no-schemata    One start of the test runner per mutant (the default).
   -h, --help       This text.
   --version        The version of this tool.
   -- <command>     The command that runs test files (default:

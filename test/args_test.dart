@@ -42,9 +42,24 @@ void main() {
     expect(args.html, isNull);
     expect(args.force, isFalse);
     expect(args.jobs, isNull);
+    expect(args.schemata, isNull);
     expect(args.only, isEmpty);
     expect(args.targets, isEmpty);
     expect(args.command, isEmpty);
+  });
+
+  test('--schemata and --no-schemata', () {
+    expect(runArgs(['run', 'a.dart', '--schemata']).schemata, isTrue);
+    expect(runArgs(['run', '--no-schemata', 'a.dart']).schemata, isFalse);
+    // Not ours after --.
+    expect(
+      runArgs(['run', 'a.dart', '--', 'dart', 'test', '--schemata']).schemata,
+      isNull,
+    );
+  });
+
+  test('without either, the mutants are run one by one', () {
+    expect(schemataByDefault, isFalse);
   });
 
   test('RunArgs without arguments is a run in the current directory that '
@@ -56,6 +71,7 @@ void main() {
     expect(args.report, isNull);
     expect(args.html, isNull);
     expect(args.jobs, isNull);
+    expect(args.schemata, isNull);
     expect(args.only, isEmpty);
     expect(args.targets, isEmpty);
     expect(args.command, isEmpty);
@@ -123,6 +139,26 @@ void main() {
     ('an unknown option', ['run', 'a.dart', '--fast'], 'unknown option'),
     ('a short option', ['run', 'a.dart', '-f'], 'unknown option "-f"'),
     ('--force with a value', ['run', 'a.dart', '--force=1'], 'takes no value'),
+    (
+      '--schemata with a value',
+      ['run', 'a.dart', '--schemata=1'],
+      '--schemata takes no value',
+    ),
+    (
+      '--no-schemata with a value',
+      ['run', 'a.dart', '--no-schemata=0'],
+      '--no-schemata takes no value',
+    ),
+    (
+      '--schemata twice',
+      ['run', 'a.dart', '--schemata', '--schemata'],
+      '--schemata or --no-schemata is given twice',
+    ),
+    (
+      '--schemata and --no-schemata',
+      ['run', 'a.dart', '--no-schemata', '--schemata'],
+      '--schemata or --no-schemata is given twice',
+    ),
     ('a value that is missing', ['run', 'a.dart', '--report'], 'needs a value'),
     ('an empty value', ['run', 'a.dart', '--report='], 'needs a value'),
     (
@@ -167,6 +203,8 @@ void main() {
       '--html',
       '--force',
       '--jobs',
+      '--schemata',
+      '--no-schemata',
     ]) {
       expect(help, contains(option));
     }
