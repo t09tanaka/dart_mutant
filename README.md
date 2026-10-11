@@ -108,7 +108,7 @@ The keys are `version` and `targets`, and in a target `file` and `tests`. It is 
 
 ### What it prints, and the exit code
 
-For each file a line when its tests start (with `, 3 at a time` when the mutants are run in working copies) and a line with the counts. Then the survivors, one line each: `file:line:column / Mutator / original → replacement (Survived)`, the line `test_gates` writes for a mutant (text that spans lines is shown on one). The last line is `dart_mutant run: OK (…)` or `dart_mutant run: FAILED (…)` with the totals, and `dart_mutant merge: …` for `merge`.
+For each file a line when its tests start (with `, 3 at a time` when the mutants are run in working copies) and a line with the counts. Then, under a line that counts them (`dart_mutant run: 2 surviving mutant(s)`), the survivors, one line each: `file:line:column / Mutator / original → replacement (Survived)`, the line `test_gates` writes for a mutant (text that spans lines is shown on one). The last line is `dart_mutant run: OK (…)` or `dart_mutant run: FAILED (…)` with the totals, and `dart_mutant merge: …` for `merge`.
 
 The lines of the files and the `OK` line go to stdout. What is wrong goes to stderr: the survivors, a file that could not be mutation tested, the `FAILED` line. Wrong usage is answered with `dart_mutant: <what is wrong>`, an empty line and the help (`--help`); a plan file that cannot be used with the first of these alone, since the help would not say what is wrong with it.
 
@@ -530,7 +530,7 @@ The page is shown by the `mutation-test-report-app` element of [`mutation-testin
 What connects them today is the report. `test_gates` 0.1.x has a mutation test of its own (`test_gates mutation`: the twelve syntax mutators, in place, one mutant at a time) and does not start `dart_mutant`. Its `test_gates mutation-result --report <path>` judges any report in the schema this tool writes, so the mutants can be run here and judged there:
 
 1. write the gates and their tests into a [plan file](#which-files-and-which-tests),
-2. `dart_mutant run --plan <plan.json> --report <path>` (exit code 1 only says that a mutant survived; whether it is allowed is the next step),
+2. `dart_mutant run --plan <plan.json> --report <path>` (exit code 1 with a report means that a mutant survived, or that a file could not be mutation tested; which survivors are allowed, and that no gate is missing from the report, is the next step),
 3. `test_gates mutation-result --report <path>`.
 
 [This package does that for its own gates](#the-gates-of-this-package), with a script. That `test_gates` starts `dart_mutant` by itself is meant for a later version of it; no published version does.

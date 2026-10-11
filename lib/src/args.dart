@@ -144,7 +144,11 @@ ParsedArgs parseArgs(List<String> argv) {
   }
   final merge = own.first == 'merge';
   if (own.first != 'run' && !merge) {
-    throw UsageError('unknown command: ${own.first}');
+    throw UsageError(
+      own.first.startsWith('-')
+          ? 'unknown argument: ${own.first}'
+          : 'unknown command: ${own.first}',
+    );
   }
   if (merge && rest.isNotEmpty) {
     throw UsageError('merge runs no tests: "--" and a command do not belong');
@@ -302,8 +306,8 @@ Options:
                    files to mutate and, for each, the test files to run:
                      {"version": 1, "targets": [
                        {"file": "lib/a.dart", "tests": ["test/a_test.dart"]}]}
-                   A key it does not know is wrong usage. Without a plan the
-                   tests of lib/a.dart are lib/a_test.dart and
+                   A key it does not know is refused (exit code 2). Without a
+                   plan the tests of lib/a.dart are lib/a_test.dart and
                    test/a_test.dart, whichever exist.
   --only <file>    Limit the run to this file of the plan or of the arguments.
                    May be given more than once. The report keeps what it says

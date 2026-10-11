@@ -254,6 +254,12 @@ void main() {
   for (final (name, argv, message) in [
     ('nothing', <String>[], 'no command given'),
     ('another command', ['test'], 'unknown command: test'),
+    ('an option and no command', ['--fast'], 'unknown argument: --fast'),
+    (
+      'an option in front of the command',
+      ['--dir', 'a', 'run', 'a.dart'],
+      'unknown argument: --dir',
+    ),
     ('another command and more', ['test', 'a.dart'], 'unknown command: test'),
     ('only a test command', ['--', 'dart', 'test'], 'no command given'),
     ('-- in front of run', ['--', 'run', 'a.dart'], 'no command given'),
