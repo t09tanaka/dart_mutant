@@ -35,7 +35,7 @@
 - The help says of `--only` that the other files of a report are kept when
   this version wrote it (as 0.1.1 does).
 
-## 0.1.1 (not yet published)
+## 0.1.1 (2026-10-12)
 
 `--schemata` is withdrawn: it could report a mutant as killed that survives.
 
