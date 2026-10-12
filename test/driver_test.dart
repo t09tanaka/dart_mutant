@@ -3,10 +3,25 @@ import 'dart:convert';
 import 'package:dart_mutant/src/driver.dart';
 import 'package:test/test.dart';
 
-String started(int id, String name, [int time = 0]) => jsonEncode({
+/// The test file of [position] is started: the suite [id].
+String suite(int id, int position, {int time = 0, int test = 0}) => jsonEncode({
+  'type': 'suite',
+  'time': time,
+  'suite': {'id': id, 'path': 'test/${driverNameOf(position, test)}'},
+});
+
+/// A test of the suite [suite] starts. Without [groups] it is the one that
+/// loads the test file.
+String started(
+  int id,
+  int suite,
+  String name, {
+  int time = 0,
+  List<int> groups = const [1],
+}) => jsonEncode({
   'type': 'testStart',
   'time': time,
-  'test': {'id': id, 'name': name},
+  'test': {'id': id, 'name': name, 'suiteID': suite, 'groupIDs': groups},
 });
 
 String ended(int id, [String result = 'success', int time = 0]) => jsonEncode({
@@ -28,15 +43,16 @@ DriverLog log(
   return log;
 }
 
-/// A test of each position up to [last] that passes, but for the positions
-/// [failing].
-List<String> run(
-  int last, {
-  Set<int> failing = const {},
-  List<int> plan = const [-1, 4, 5, -1, 6, -1],
-}) => [
+/// The test file of each position up to [last] is loaded, and its one test
+/// passes, but for the positions [failing]. The suite of a position has its
+/// number, its test that number as well, and the test that loads it that
+/// number plus 100.
+List<String> run(int last, {Set<int> failing = const {}}) => [
   for (var position = 0; position <= last; position++) ...[
-    started(position, 'dart_mutant#$position#${plan[position]} a test'),
+    suite(position, position),
+    started(position + 100, position, 'loading', groups: const []),
+    ended(position + 100),
+    started(position, position, 'a test'),
     ended(position, failing.contains(position) ? 'failure' : 'success'),
   ],
 ];
@@ -193,10 +209,28 @@ void main() {
     });
   });
 
+  test('driverNameOf and positionOf', () {
+    expect(driverNameOf(0, 0), 'dart_mutant_0_0_test.dart');
+    expect(driverNameOf(12, 3), 'dart_mutant_12_3_test.dart');
+    expect(driverPrefix, 'dart_mutant_');
+    expect(positionOf('dart_mutant_0_0_test.dart'), 0);
+    expect(positionOf('test/dart_mutant_12_3_test.dart'), 12);
+    expect(positionOf(r'C:\p\test\dart_mutant_7_10_test.dart'), 7);
+    expect(positionOf('/a/b/dart_mutant_105_0_test.dart'), 105);
+    // Not one of them.
+    expect(positionOf('test/my_dart_mutant_1_0_test.dart'), isNull);
+    expect(positionOf('test/dart_mutant_1_0_test.dart.txt'), isNull);
+    expect(positionOf('test/dart_mutant_1_test.dart'), isNull);
+    expect(positionOf('test/dart_mutant_a_0_test.dart'), isNull);
+    expect(positionOf('test/dart_mutant_1_0_testXdart'), isNull);
+    expect(positionOf('test/dart_mutant_1_0_test.dart/a_test.dart'), isNull);
+    expect(positionOf(''), isNull);
+  });
+
   group('testsObstacle', () {
     const fine = 'void main() {}';
 
-    test('tests in one directory that the driver can call', () {
+    test('tests in one directory that a driver can call', () {
       expect(
         testsObstacle({
           'test/a_test.dart': fine,
@@ -217,14 +251,14 @@ void main() {
       );
     });
 
-    test('a file with the name of the driver', () {
+    test('a file with a name that a driver could have', () {
       expect(
         testsObstacle({'test/a_test.dart': fine}, taken: true),
-        'has a file called dart_mutant_driver_test.dart next to its tests',
+        'has a file whose name starts with dart_mutant_ next to its tests',
       );
     });
 
-    test('a test the driver cannot call: the first one is named', () {
+    test('a test a driver cannot call: the first one is named', () {
       expect(
         testsObstacle({
           'test/a_test.dart': fine,
@@ -238,28 +272,37 @@ void main() {
 
   test('driverPathOf', () {
     expect(
-      driverPathOf(['test/x/a_test.dart', 'test/x/b_test.dart']),
-      'test/x/dart_mutant_driver_test.dart',
+      driverPathOf(['test/x/a_test.dart', 'test/x/b_test.dart'], 3, 1),
+      'test/x/dart_mutant_3_1_test.dart',
     );
-    expect(driverPathOf(['a_test.dart']), 'dart_mutant_driver_test.dart');
+    expect(driverPathOf(['a_test.dart'], 0, 0), 'dart_mutant_0_0_test.dart');
     // The first one decides; the caller has seen to it that they agree.
     expect(
-      driverPathOf(['a/x_test.dart', 'b/y_test.dart', 'z_test.dart']),
-      'a/dart_mutant_driver_test.dart',
+      driverPathOf(['a/x_test.dart', 'b/y_test.dart', 'z_test.dart'], 2, 2),
+      'a/dart_mutant_2_2_test.dart',
     );
   });
 
   test('driverCommand', () {
-    expect(driverCommand(['flutter', 'test', '--no-pub'], 'test/d_test.dart'), [
-      'flutter',
-      'test',
-      '--no-pub',
-      '--timeout',
-      '10s',
-      '--reporter',
-      'json',
-      'test/d_test.dart',
-    ]);
+    expect(
+      driverCommand(
+        ['flutter', 'test', '--no-pub'],
+        ['test/d_0_test.dart', 'test/d_1_test.dart'],
+      ),
+      [
+        'flutter',
+        'test',
+        '--no-pub',
+        '--timeout',
+        '10s',
+        '--concurrency',
+        '1',
+        '--reporter',
+        'json',
+        'test/d_0_test.dart',
+        'test/d_1_test.dart',
+      ],
+    );
   });
 
   group('testLibraryOf', () {
@@ -301,12 +344,14 @@ void main() {
     });
   });
 
-  test('driverSource', () {
+  test('driverSource: the mutant is at work before the tests are declared, '
+      'and a test is not run after one of them failed', () {
     expect(
       driverSource(
         testLibrary: 'package:test/test.dart',
         target: 'package:p/a.dart',
-        tests: ['a_test.dart', "it's/b_test.dart"],
+        test: "it's/b_test.dart",
+        id: 12,
         state: r'/tmp/$state',
       ),
       r'''
@@ -316,42 +361,59 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 import 'package:p/a.dart' as target;
-import 'a_test.dart' as tests0;
-import 'it\'s/b_test.dart' as tests1;
+import 'it\'s/b_test.dart' as tests;
 
 const _state = '/tmp/\$state';
 
 void main() {
-  final plan = File('$_state/plan').readAsLinesSync().map(int.parse).toList();
-  for (final (position, id) in plan.indexed) {
-    group('dart_mutant#$position#$id', () {
-      setUpAll(() => target.$dartMutantActive = id);
-      setUp(() {
-        target.$dartMutantActive = id;
-        if (id != -1 && File('$_state/killed/$id').existsSync()) {
-          throw StateError('dart_mutant: not run, a test before it failed');
-        }
-      });
-      tearDownAll(() => target.$dartMutantActive = -1);
-      File('$_state/declared').writeAsStringSync(
-        '$position\n',
-        mode: FileMode.append,
-        flush: true,
-      );
-      target.$dartMutantActive = id;
-      try {
-        tests0.main();
-        tests1.main();
-      } catch (error, stack) {
-        test(
-          'dart_mutant: the tests cannot be declared',
-          () => Error.throwWithStackTrace(error, stack),
-        );
-      } finally {
-        target.$dartMutantActive = -1;
-      }
-    });
+  final cwd = File('$_state/cwd');
+  if (cwd.existsSync()) {
+    Directory.current = cwd.readAsStringSync();
+  } else {
+    cwd.writeAsStringSync(Directory.current.path, flush: true);
   }
+  target.$dartMutantActive = 12;
+  final killed = File('$_state/killed/12');
+  setUp(() {
+    if (killed.existsSync()) {
+      throw StateError('dart_mutant: not run, a test before it failed');
+    }
+  });
+  tests.main();
+}
+''',
+    );
+  });
+
+  test('driverSource: without a mutant every test is run', () {
+    expect(
+      driverSource(
+        testLibrary: 'package:flutter_test/flutter_test.dart',
+        target: '../lib/a.dart',
+        test: 'a_test.dart',
+        id: -1,
+        state: '/s',
+      ),
+      r'''
+// Written by dart_mutant for one run, and removed with it.
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+
+import '../lib/a.dart' as target;
+import 'a_test.dart' as tests;
+
+const _state = '/s';
+
+void main() {
+  final cwd = File('$_state/cwd');
+  if (cwd.existsSync()) {
+    Directory.current = cwd.readAsStringSync();
+  } else {
+    cwd.writeAsStringSync(Directory.current.path, flush: true);
+  }
+  target.$dartMutantActive = -1;
+  tests.main();
 }
 ''',
     );
@@ -377,176 +439,217 @@ void main() {
   });
 
   group('DriverLog.add', () {
-    test('a test belongs to the position its name starts with', () {
-      final found = log([
-        started(1, 'loading test/driver_test.dart'),
-        started(2, 'dart_mutant#0#-1 (setUpAll)', 10),
-        started(3, 'dart_mutant#0#-1 a test', 20),
-        started(4, 'dart_mutant#1#4', 30),
-        started(5, 'dart_mutant#2#5 dart_mutant#1#4 a', 40),
+    test('a test belongs to the position of its test file', () {
+      final driver = log([
+        suite(7, 1, time: 30),
+        started(8, 7, 'loading test/dart_mutant_1_0_test.dart', groups: []),
+        ended(8),
+        started(9, 7, 'a test', time: 40),
       ]);
-      expect(found.started, {0: 10, 1: 30, 2: 40});
-      expect(found.current, 2);
-      expect(found.time, 40);
+      expect(driver.started, {1: 30});
+      expect(driver.current, 1);
+      expect(driver.time, 40);
+      expect(driver.add(ended(9, 'failure')), 4);
+      expect(driver.failed, {1});
+      expect(driver.unloaded, isEmpty);
+      expect(driver.passed, isEmpty);
     });
 
-    test('a name that only looks like one of the driver, a position the '
-        'plan does not have, a mutant that is not at that position', () {
-      final found = log([
-        started(1, 'dart_mutant#0#-1x'),
-        started(2, 'dart_mutant#0#-11 a'),
-        started(3, 'dart_mutant#1#'),
-        started(4, 'a dart_mutant#1#4 b'),
-        started(5, 'dart_mutant#6#-1 a'),
-        started(6, 'dart_mutant#1#5 a'),
-        started(7, 'dart_mutant#-1#4 a'),
+    test('a test file that is not of the plan, and a test of such a file: '
+        'what fails there is nothing that can be told apart', () {
+      final driver = log([
         jsonEncode({
-          'type': 'testStart',
-          'test': {'id': '8', 'name': 'dart_mutant#1#4 a'},
+          'type': 'suite',
+          'suite': {'id': 1, 'path': 'test/other_test.dart'},
+        }),
+        // A position the plan does not have.
+        suite(2, 6),
+        jsonEncode({
+          'type': 'suite',
+          'suite': {'id': 'x', 'path': 'test/dart_mutant_0_0_test.dart'},
         }),
         jsonEncode({
-          'type': 'testStart',
-          'test': {'id': 9, 'name': 9},
+          'type': 'suite',
+          'suite': {'id': 3, 'path': 5},
         }),
-        jsonEncode({'type': 'testStart', 'test': 'dart_mutant#1#4 a'}),
+        '{"type":"suite"}',
+        started(10, 1, 'a test'),
+        started(11, 2, 'a test'),
       ]);
-      expect(found.started, isEmpty);
-      expect(found.current, isNull);
+      expect(driver.started, isEmpty);
+      expect(driver.current, isNull);
+      expect(driver.loadFailed, isFalse);
+      expect(driver.add(ended(10)), isNull);
+      expect(driver.passed, isEmpty);
+      expect(driver.loadFailed, isFalse);
+      expect(driver.add(ended(11, 'error')), isNull);
+      expect(driver.loadFailed, isTrue);
+      expect(driver.failed, isEmpty);
     });
 
     test('the last position of the plan is one', () {
-      expect(log([started(1, 'dart_mutant#5#-1 a')]).started.keys, [5]);
+      expect(log([suite(1, 5)]).started, {5: 0});
+    });
+
+    test('a test without a number, or without a test, is none', () {
+      final driver = log([
+        suite(1, 0),
+        jsonEncode({
+          'type': 'testStart',
+          'test': {
+            'id': 'a',
+            'suiteID': 1,
+            'name': 'n',
+            'groupIDs': [1],
+          },
+        }),
+        '{"type":"testStart"}',
+      ]);
+      expect(driver.add(ended(0)), isNull);
+      expect(driver.passed, isEmpty);
+    });
+
+    test('the test that loads a test file is in no group: when it fails, '
+        'the test file could not be loaded, and no test failed', () {
+      final driver = log([
+        suite(1, 1),
+        started(2, 1, 'loading', groups: []),
+        suite(3, 0),
+        jsonEncode({
+          'type': 'testStart',
+          'test': {'id': 4, 'name': 'loading', 'suiteID': 3},
+        }),
+      ]);
+      expect(driver.add(ended(2, 'error')), isNull);
+      expect(driver.unloaded, {1});
+      expect(driver.add(ended(4, 'failure')), isNull);
+      expect(driver.unloaded, {1, 0});
+      expect(driver.failed, isEmpty);
+      expect(driver.loadFailed, isFalse);
+      // One that passes is not counted as a test.
+      final fine = log([suite(1, 1), started(2, 1, 'loading', groups: [])]);
+      expect(fine.add(ended(2)), isNull);
+      expect(fine.passed, isEmpty);
+      expect(fine.unloaded, isEmpty);
     });
 
     test('the first failing test of a mutant is reported once; of the '
-        'tests without a mutant, never', () {
-      final found = DriverLog([-1, 4, -1]);
-      expect(found.add(started(1, 'dart_mutant#0#-1 a')), isNull);
-      expect(found.add(ended(1, 'failure')), isNull);
-      expect(found.add(started(2, 'dart_mutant#1#4 a')), isNull);
-      expect(found.add(ended(2)), isNull);
-      expect(found.failed, {0});
-      expect(found.add(started(3, 'dart_mutant#1#4 b')), isNull);
-      expect(found.add(ended(3, 'error')), 4);
-      expect(found.add(started(4, 'dart_mutant#1#4 c')), isNull);
-      expect(found.add(ended(4, 'failure')), isNull);
-      expect(found.failed, {0, 1});
-      expect(found.loadFailed, isFalse);
-      expect(found.failedWithoutMutant, 'a');
+        'tests without a mutant never', () {
+      final driver = log([
+        suite(1, 1),
+        started(10, 1, 'a'),
+        started(11, 1, 'b'),
+        suite(2, 3),
+        started(12, 2, 'c'),
+      ]);
+      expect(driver.add(ended(10, 'failure')), 4);
+      expect(driver.add(ended(11, 'error')), isNull);
+      expect(driver.add(ended(12, 'failure')), isNull);
+      expect(driver.failed, {1, 3});
     });
 
     test('the first test that fails without a mutant is remembered by its '
-        'own name', () {
-      final found = log([
-        started(1, 'dart_mutant#0#-1 the group the test'),
-        started(2, 'dart_mutant#0#-1 another'),
-        started(3, 'dart_mutant#3#-1 a third'),
-        ended(2, 'failure'),
-        ended(1, 'failure'),
-        ended(3, 'failure'),
+        'name', () {
+      final driver = log([
+        suite(1, 0),
+        started(10, 1, 'group first'),
+        started(11, 1, 'group second'),
+        suite(2, 3),
+        started(12, 2, 'third'),
+        ended(11, 'failure'),
+        ended(10, 'failure'),
+        ended(12, 'failure'),
       ]);
-      expect(found.failedWithoutMutant, 'another');
+      expect(driver.failedWithoutMutant, 'group second');
+      expect(log([]).failedWithoutMutant, isNull);
     });
 
-    test('a failing test of no position is the driver that cannot be '
-        'loaded', () {
-      final found = log([started(1, 'loading test/d_test.dart'), ended(1)]);
-      expect(found.loadFailed, isFalse);
-      found.add(ended(1, 'error'));
-      expect(found.loadFailed, isTrue);
-      expect(found.failed, isEmpty);
+    test('a failing test of no test file is the test run that cannot be '
+        'told apart', () {
+      final driver = log([]);
+      expect(driver.loadFailed, isFalse);
+      expect(driver.add(ended(1, 'error')), isNull);
+      expect(driver.loadFailed, isTrue);
+      expect(driver.failed, isEmpty);
     });
 
     test('a log starts at no time, and what is no event reports nothing', () {
-      final found = DriverLog([-1, 4, -1]);
-      expect(found.time, 0);
-      expect(found.add('Compiling...'), isNull);
-      expect(found.add('[1, 2]'), isNull);
-      expect(found.add('7'), isNull);
+      final driver = log([]);
+      expect(driver.time, 0);
+      expect(driver.done, isFalse);
+      expect(driver.current, isNull);
     });
 
     test('what is no event is passed over', () {
-      final found = log([
-        'Compiling...',
-        '[1, 2]',
-        '{"type":"print","message":"x"}',
-        '{"type":"suite","time":"late"}',
-        '{"time":7}',
-      ]);
-      expect(found.started, isEmpty);
-      expect(found.done, isFalse);
-      expect(found.time, 7);
+      final driver = log([suite(1, 1, time: 5)]);
+      for (final line in ['', 'Compiling…', '[]', '"text"', '{', '{}']) {
+        expect(driver.add(line), isNull);
+      }
+      expect(driver.add('{"type":"testDone","time":"soon"}'), isNull);
+      expect(driver.time, 5);
+      expect(driver.done, isFalse);
     });
 
     test('a test runner that was told to end is not done', () {
-      final found = log(['{"type":"done","success":null,"time":9}']);
-      expect(found.done, isFalse);
+      expect(log(['{"type":"done","success":null}']).done, isFalse);
       expect(log(['{"type":"done","success":false}']).done, isTrue);
+      expect(log([done]).done, isTrue);
     });
 
     test('the tests that passed are counted by position', () {
-      final found = log([
-        started(1, 'dart_mutant#0#-1 a'),
-        started(2, 'dart_mutant#0#-1 b'),
-        started(3, 'dart_mutant#1#4 a'),
-        started(4, 'loading'),
-        ended(1),
-        ended(2),
-        ended(3, 'failure'),
-        ended(4),
-        ended(3),
+      final driver = log([
+        suite(1, 0),
+        started(10, 1, 'a'),
+        ended(10),
+        started(11, 1, 'b'),
+        ended(11),
+        suite(2, 1),
+        started(12, 2, 'a'),
+        ended(12),
+        started(13, 2, 'b'),
+        ended(13, 'failure'),
       ]);
-      expect(found.passed, {0: 2, 1: 1});
+      expect(driver.passed, {0: 2, 1: 1});
+    });
+
+    test('the test files of one position are one position: it is started '
+        'when the first of them is', () {
+      final driver = log([
+        suite(1, 0, time: 3),
+        suite(2, 0, test: 1, time: 9),
+        started(10, 1, 'a'),
+        started(11, 2, 'b'),
+        ended(10),
+        ended(11),
+      ]);
+      expect(driver.started, {0: 3});
+      expect(driver.passed, {0: 2});
     });
 
     test('done, and ended after all', () {
-      final found = log(['{"type":"done","success":true,"time":9}']);
-      expect(found.done, isTrue);
-      expect(found.time, 9);
-      found.ended();
-      expect(found.done, isFalse);
-    });
-  });
-
-  group('DriverLog.declared', () {
-    test('the last position that was noted is the one at work, until a '
-        'test starts', () {
-      final found = DriverLog([-1, 4, -1]);
-      expect(found.current, isNull);
-      found.declared('0\n');
-      expect(found.current, 0);
-      found.declared('0\n1\n2\n');
-      expect(found.current, 2);
-      found.declared('0\n1\n2\n\n');
-      expect(found.current, 2);
-      found.add(started(1, 'dart_mutant#0#-1 a'));
-      expect(found.current, 0);
-    });
-
-    test('a note that is half written changes nothing', () {
-      final found = DriverLog([-1, 4, -1])..declared('1\n');
-      found.declared('1\nx');
-      expect(found.declaring, 1);
-      found.declared('');
-      expect(found.declaring, 1);
+      final driver = log([done]);
+      expect(driver.done, isTrue);
+      driver.ended();
+      expect(driver.done, isFalse);
     });
   });
 
   group('DriverLog.millisecondsOf', () {
-    test('from the first test of a position to the first of the next that '
-        'has one, or to the last line', () {
-      final found = log([
-        started(1, 'dart_mutant#0#-1 a', 100),
-        started(2, 'dart_mutant#0#-1 b', 150),
-        started(3, 'dart_mutant#1#4 a', 400),
-        // The position 2 has no test.
-        started(4, 'dart_mutant#3#-1 a', 1000),
-        ended(4, 'success', 1250),
+    test('from the start of the first test file of a position to the start '
+        'of the next position that has one, or to the last line', () {
+      final driver = log([
+        suite(1, 0, time: 100),
+        started(10, 1, 'a', time: 400),
+        suite(2, 2, time: 1300),
+        suite(3, 3, time: 1900),
+        ended(10, 'success', 2500),
       ]);
-      expect(found.millisecondsOf(0), 300);
-      expect(found.millisecondsOf(1), 600);
-      expect(found.millisecondsOf(2), 0);
-      expect(found.millisecondsOf(3), 250);
+      expect(driver.millisecondsOf(0), 1200);
+      expect(driver.millisecondsOf(2), 600);
+      expect(driver.millisecondsOf(3), 600);
+      // No test file of it was started.
+      expect(driver.millisecondsOf(1), 0);
+      expect(driver.millisecondsOf(4), 0);
     });
   });
 
@@ -555,88 +658,78 @@ void main() {
         baseline * 2 + const Duration(seconds: 1);
     const first = Duration(minutes: 10);
 
-    Duration limit(DriverLog log) => log.limit(limitOf, first: first);
-
-    test('compiling, declaring the tests without a mutant, and the first '
-        'run of them: the limit of the first run', () {
-      final found = DriverLog([-1, 4, 5, -1]);
-      expect(limit(found), first);
-      found.declared('0\n');
-      expect(limit(found), first);
-      found.add(started(1, 'dart_mutant#0#-1 a', 500));
-      expect(limit(found), first);
-    });
-
-    test('declaring the tests of a mutant: the limit of a run that takes '
-        'no time', () {
-      final found = DriverLog([-1, 4, 5, -1])..declared('1\n');
-      expect(limit(found), const Duration(seconds: 1));
-      found.declared('2\n');
-      expect(limit(found), const Duration(seconds: 1));
-    });
-
-    test('after the last declaration the test runner has its time', () {
-      final found = DriverLog([-1, 4, 5, -1])..declared('3\n');
-      expect(limit(found), first);
+    test('before the first test file, and while the tests run without a '
+        'mutant for the first time: the compiler and the test runner start '
+        'then', () {
+      expect(log([]).limit(limitOf, first: first), first);
+      expect(
+        log([suite(1, 0), started(10, 1, 'a')]).limit(limitOf, first: first),
+        first,
+      );
     });
 
     test('a later position: the limit of a run after the first one', () {
-      final found = DriverLog([-1, 4, 5, -1])
-        ..declared('3\n')
-        ..add(started(1, 'dart_mutant#0#-1 a', 500))
-        ..add(started(2, 'dart_mutant#1#4 a', 2500));
-      expect(limit(found), const Duration(seconds: 5));
-      found.add(started(3, 'dart_mutant#2#5 a', 9000));
-      expect(limit(found), const Duration(seconds: 5));
+      final driver = log([suite(1, 0, time: 1000), suite(2, 1, time: 4000)]);
+      expect(driver.limit(limitOf, first: first), const Duration(seconds: 7));
+      driver
+        ..add(suite(3, 2, time: 9000))
+        ..add(started(10, 3, 'a', time: 60000));
+      expect(driver.limit(limitOf, first: first), const Duration(seconds: 7));
     });
   });
 
   group('DriverLog.memoryLimit', () {
-    int limitOf(int baseline) => baseline * 3 + 7;
+    int limitOf(int baseline) => baseline * 2 + 5;
 
-    test('compiling, declaring the tests without a mutant, and the first '
-        'run of them: no limit, and what is held then is what a run without '
-        'a mutant takes', () {
-      final found = DriverLog([-1, 4, 5, -1]);
-      expect(found.memoryLimit(100, limitOf), isNull);
-      found.declared('0\n');
-      expect(found.memoryLimit(200, limitOf), isNull);
-      found.declared('0\n1\n');
-      expect(found.memoryLimit(250, limitOf), 607);
-      found.declared('0\n1\n2\n3\n');
-      expect(found.memoryLimit(300, limitOf), 607);
-      // The tests are run: without a mutant first.
-      found.add(started(1, 'dart_mutant#0#-1 a', 500));
-      expect(found.memoryLimit(400, limitOf), isNull);
-      found.add(started(2, 'dart_mutant#1#4 a', 2500));
-      expect(found.memoryLimit(5000, limitOf), 1207);
-      expect(found.memoryLimit(9000, limitOf), 1207);
-      // Without a mutant again: with the limit of every later position.
-      found.add(started(3, 'dart_mutant#3#-1 a', 2500));
-      expect(found.memoryLimit(9000, limitOf), 1207);
+    test('before the first test file and while the tests run without a '
+        'mutant for the first time there is no limit, and what is held then '
+        'is what a run without a mutant takes', () {
+      final driver = log([]);
+      expect(driver.memoryLimit(10, limitOf), isNull);
+      driver.add(suite(1, 0));
+      expect(driver.memoryLimit(100, limitOf), isNull);
+      driver.add(suite(2, 1));
+      expect(driver.memoryLimit(900, limitOf), 205);
+      driver.add(suite(3, 2));
+      expect(driver.memoryLimit(5000, limitOf), 205);
     });
 
     test('nothing was measured before the first mutant: the limit of a run '
-        'that takes nothing', () {
-      final found = DriverLog([-1, 4, -1])..declared('1\n');
-      expect(found.memoryLimit(50, limitOf), 7);
+        'that held nothing', () {
+      final driver = log([suite(1, 0), suite(2, 1)]);
+      expect(driver.memoryLimit(900, limitOf), 5);
     });
   });
 
   group('DriverLog.result', () {
-    test('a driver that ran everything: killed is what a test failed on '
-        'before the tests passed without a mutant', () {
-      final lines = run(5, failing: {1, 4});
-      final found = log([
-        for (final (index, line) in lines.indexed)
-          line.replaceFirst('"time":0', '"time":${index * 100}'),
+    test('a test run that ran everything: killed is what a test failed on '
+        'before the tests passed without a mutant, with how long it took', () {
+      final driver = log([
+        suite(0, 0, time: 0),
+        started(0, 0, 'a'),
+        ended(0),
+        suite(1, 1, time: 100),
+        started(1, 1, 'a'),
+        ended(1, 'failure'),
+        suite(2, 2, time: 250),
+        started(2, 2, 'a'),
+        ended(2),
+        suite(3, 3, time: 300),
+        started(3, 3, 'a'),
+        ended(3),
+        suite(4, 4, time: 400),
+        started(4, 4, 'a'),
+        ended(4, 'failure'),
+        suite(5, 5, time: 470),
+        started(5, 5, 'a'),
+        ended(5),
         done,
       ]);
-      final result = found.result;
-      expect(result.failure, isNull);
-      expect(result.killed, {4: 200, 6: 200});
+      final result = driver.result;
+      expect(result.killed, {4: 150, 6: 70});
       expect(result.again, [5]);
       expect(result.rest, isEmpty);
+      expect(result.failure, isNull);
     });
 
     test('nothing failed: every mutant is measured again', () {
@@ -647,119 +740,171 @@ void main() {
       expect(result.failure, isNull);
     });
 
-    test('a driver that could not be loaded', () {
+    test('nothing was started, or something failed that is no test of the '
+        'plan', () {
       const failure = 'the file with its mutants built in cannot be loaded';
       expect(log([]).result.failure, failure);
       expect(log([done]).result.failure, failure);
-      final found = log([
-        started(1, 'loading'),
-        ended(1, 'error'),
-        ...run(5),
+      final result = log([
+        ...run(5, failing: {1}),
+        ended(99, 'error'),
         done,
-      ]);
-      expect(found.result.failure, failure);
-      expect(found.result.killed, isEmpty);
+      ]).result;
+      expect(result.failure, failure);
+      expect(result.killed, isEmpty);
+      expect(result.again, isEmpty);
+      expect(result.rest, isEmpty);
     });
 
     test('the tests fail without a mutant, at the start or later', () {
       const failure =
-          'the tests do not pass without a mutant when they are run more '
-          'than once in one process ("a test" fails)';
-      expect(
-        log([
-          ...run(5, failing: {0}),
+          'the tests do not pass without a mutant when the mutants are '
+          'built in ("a test" fails)';
+      for (final position in [0, 3, 5]) {
+        final result = log([
+          ...run(5, failing: {1, position}),
           done,
-        ]).result.failure,
-        failure,
-      );
-      final later = log([
-        ...run(5, failing: {1, 3}),
-        done,
-      ]).result;
-      expect(later.failure, failure);
-      expect(later.killed, isEmpty);
-      expect(
-        log([
-          ...run(5, failing: {1, 5}),
-          done,
-        ]).result.failure,
-        failure,
-      );
+        ]).result;
+        expect(result.failure, failure, reason: '$position');
+        expect(result.killed, isEmpty, reason: '$position');
+        expect(result.again, isEmpty);
+        expect(result.rest, isEmpty);
+      }
     });
 
-    test('the tests without a mutant did not run at all', () {
-      final found = log([
-        for (final line in run(5))
-          if (!line.contains('dart_mutant#3#') && !line.contains('"testID":3'))
-            line,
+    test('a test file cannot be loaded without a mutant', () {
+      for (final position in [0, 3]) {
+        final result = log([
+          for (var at = 0; at <= 5; at++) ...[
+            suite(at, at),
+            started(at + 100, at, 'loading', groups: const []),
+            ended(at + 100, at == position ? 'error' : 'success'),
+            if (at != position) ...[started(at, at, 'a test'), ended(at)],
+          ],
+          done,
+        ]).result;
+        expect(
+          result.failure,
+          'the tests do not pass without a mutant when the mutants are '
+          'built in',
+          reason: '$position',
+        );
+      }
+      // Also when a test of it passed: another test file of the position.
+      final both = log([
+        ...run(5),
+        suite(9, 3, test: 1),
+        started(90, 9, 'loading', groups: const []),
+        ended(90, 'error'),
         done,
-      ]);
-      expect(
-        found.result.failure,
-        'the tests do not pass without a mutant when they are run more '
-        'than once in one process',
-      );
+      ]).result;
+      expect(both.failure, isNotNull);
     });
 
     test('other tests ran without a mutant than the first time', () {
       const failure =
-          'the tests do not pass without a mutant when they are run more '
-          'than once in one process';
-      final fewer = log([
-        started(10, 'dart_mutant#0#-1 another test'),
-        ended(10),
-        ...run(5),
-        done,
-      ]);
-      expect(fewer.result.failure, failure);
-      final more = log([
-        ...run(5),
-        started(10, 'dart_mutant#5#-1 another test'),
-        ended(10),
-        done,
-      ]);
-      expect(more.result.failure, failure);
-      expect(more.result.killed, isEmpty);
+          'the tests do not pass without a mutant when the mutants are '
+          'built in';
+      // More the second time.
+      expect(
+        log([
+          ...run(5),
+          started(50, 3, 'more'),
+          ended(50),
+          done,
+        ]).result.failure,
+        failure,
+      );
+      // None the last time.
+      expect(log([...run(4), suite(5, 5), done]).result.failure, failure);
+      // Fewer the second time.
+      expect(
+        log([
+          started(50, 0, 'more'),
+          ...run(5),
+          ended(50),
+          done,
+        ]).result.failure,
+        isNull,
+      );
+      expect(
+        log([
+          suite(0, 0),
+          started(50, 0, 'more'),
+          ended(50),
+          ...run(5),
+          done,
+        ]).result.failure,
+        failure,
+      );
     });
 
     test('no test passed without a mutant', () {
-      // The tests of a mutant alone are no tests.
-      final found = log([
-        started(1, 'dart_mutant#1#4 a test'),
-        ended(1, 'failure'),
+      final result = log([
+        for (var position = 0; position <= 5; position++)
+          suite(position, position),
         done,
-      ]);
+      ]).result;
       expect(
-        found.result.failure,
-        'the tests do not pass without a mutant when they are run more '
-        'than once in one process',
+        result.failure,
+        'the tests do not pass without a mutant when the mutants are '
+        'built in',
       );
-      expect(found.result.killed, isEmpty);
+    });
+
+    test('a mutant whose test file cannot be loaded is measured again, also '
+        'when a test of it failed: the usual way tells a mutant that does '
+        'not compile from one that fails', () {
+      final result = log([
+        ...run(5, failing: {1, 2}),
+        suite(9, 2, test: 1),
+        started(90, 9, 'loading', groups: const []),
+        ended(90, 'error'),
+        done,
+      ]).result;
+      expect(result.killed.keys, [4]);
+      expect(result.again, [5, 6]);
+      expect(result.failure, isNull);
     });
 
     test('a mutant without a test is measured again', () {
-      final found = log([
-        for (final line in run(5, failing: {1}))
-          if (!line.contains('dart_mutant#2#') && !line.contains('"testID":2'))
-            line,
+      final result = log([
+        suite(0, 0),
+        started(0, 0, 'a'),
+        ended(0),
+        suite(1, 1),
+        suite(2, 2),
+        suite(3, 3),
+        started(3, 3, 'a'),
+        ended(3),
+        suite(4, 4),
+        suite(5, 5),
+        started(5, 5, 'a'),
+        ended(5),
         done,
-      ]);
-      expect(found.result.killed.keys, [4]);
-      expect(found.result.again, [5, 6]);
+      ]).result;
+      expect(result.killed, isEmpty);
+      expect(result.again, [4, 5, 6]);
     });
 
     test('ended at a mutant: that one and the ones since the tests last '
-        'passed without a mutant are measured again, the ones after it are '
-        'for the next driver', () {
-      final found = log(
-        run(4, failing: {1, 3, 4}, plan: const [-1, 4, -1, 5, 6, 7, -1, 8, -1]),
-        plan: const [-1, 4, -1, 5, 6, 7, -1, 8, -1],
-      );
-      final result = found.result;
+        'passed without a mutant are measured again, the others are for '
+        'the next test run', () {
+      final driver = log([
+        ...run(2, failing: {1}),
+        done,
+      ])..ended();
+      final result = driver.result;
+      expect(result.killed, isEmpty);
+      expect(result.again, [4, 5]);
+      expect(result.rest, [6]);
       expect(result.failure, isNull);
-      expect(result.killed.keys, [4]);
-      expect(result.again, [5, 6]);
-      expect(result.rest, [7, 8]);
+
+      final later = log(run(4, failing: {1}));
+      final found = later.result;
+      expect(found.killed.keys, [4]);
+      expect(found.again, [5, 6]);
+      expect(found.rest, isEmpty);
     });
 
     test('ended at the first mutant', () {
@@ -769,51 +914,26 @@ void main() {
       expect(result.rest, [5, 6]);
     });
 
-    test('a driver that was ended says it is done: it is not', () {
-      final found = log([
-        ...run(1, failing: {1}),
-        done,
-      ])..ended();
-      expect(found.result.killed, isEmpty);
-      expect(found.result.again, [4]);
-      expect(found.result.rest, [5, 6]);
+    test('ended at a mutant of a longer plan: what was killed and what is '
+        'measured again is not for the next test run', () {
+      final result = log(
+        run(6, failing: {1}),
+        plan: const [-1, 4, 5, -1, 6, 7, 8, 9, -1],
+      ).result;
+      expect(result.killed.keys, [4]);
+      expect(result.again, [5, 6, 7, 8]);
+      expect(result.rest, [9]);
     });
 
     test('ended at the tests without a mutant', () {
-      const failure = 'the tests did not end without a mutant';
-      expect(notEndedWithoutMutant, failure);
-      expect(log(run(0)).result.failure, failure);
-      final later = log(run(3, failing: {1})).result;
-      expect(later.failure, failure);
-      expect(later.killed, isEmpty);
-    });
-
-    test('ended while the tests of a mutant were declared: that one is '
-        'measured again, all others are for the next driver', () {
-      final found = DriverLog([-1, 4, 5, -1, 6, -1])..declared('0\n1\n2\n');
-      final result = found.result;
-      expect(result.failure, isNull);
-      expect(result.killed, isEmpty);
-      expect(result.again, [5]);
-      expect(result.rest, [4, 6]);
-    });
-
-    test('ended while the tests without a mutant were declared', () {
-      for (final declared in ['0\n', '0\n1\n2\n3\n']) {
-        final found = DriverLog([-1, 4, 5, -1, 6, -1])..declared(declared);
-        expect(found.result.failure, 'the tests did not end without a mutant');
+      for (final last in [0, 3, 5]) {
+        final result = log(run(last, failing: {1})).result;
+        expect(result.failure, notEndedWithoutMutant, reason: '$last');
+        expect(result.killed, isEmpty);
+        expect(result.again, isEmpty);
+        expect(result.rest, isEmpty);
       }
-    });
-
-    test('done without a test', () {
-      final found = DriverLog([-1, 4, -1])
-        ..declared('2\n')
-        ..add(done);
-      final result = found.result;
-      expect(result.failure, isNull);
-      expect(result.killed, isEmpty);
-      expect(result.again, isEmpty);
-      expect(result.rest, isEmpty);
+      expect(notEndedWithoutMutant, 'the tests did not end without a mutant');
     });
   });
 

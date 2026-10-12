@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:dart_mutant/dart_mutant.dart';
 import 'package:dart_mutant/src/args.dart';
 import 'package:dart_mutant/src/commands/run.dart';
+import 'package:dart_mutant/src/version.dart';
 import 'package:test/test.dart';
 
 import '../support/package_fixture.dart';
@@ -108,7 +109,10 @@ void main() {
       expect(package.runs, hasLength(5));
       final json = report();
       expect(json['schemaVersion'], '2');
-      expect(json['framework'], {'name': 'dart_mutant', 'version': '0.1.1'});
+      expect(json['framework'], {
+        'name': 'dart_mutant',
+        'version': packageVersion,
+      });
       final files = json['files']! as Map<String, Object?>;
       expect(files.keys, ['lib/a.dart', 'lib/b.dart']);
       expect((files['lib/a.dart']! as Map)['source'], sourceA);
@@ -557,7 +561,7 @@ void main() {
       package.out.clear();
       expect(await run(['--version'], package.io), 0);
       expect(await run(['-v'], package.io), 0);
-      expect(package.out, ['0.1.1', '0.1.1']);
+      expect(package.out, [packageVersion, packageVersion]);
     });
   });
 
@@ -680,8 +684,10 @@ void main() {
       package.out.clear();
       expect(await quick(), 0);
       expect(package.out, [
-        '  lib/a.dart: 1 mutants / killed 1 / survived 0 / timeout 0 '
-            '/ compile error 0 (1 from the last run, 0.0s)',
+        startsWith(
+          '  lib/a.dart: 1 mutants / killed 1 / survived 0 / timeout 0 '
+          '/ compile error 0 (1 from the last run, ',
+        ),
         '  lib/b.dart: 1 of 2 mutant(s) with ${shown('lib/b_test.dart')}',
         startsWith(
           '  lib/b.dart: 2 mutants / killed 1 / survived 0 / timeout 1 '
@@ -707,10 +713,14 @@ void main() {
       package.file('.dart_tool/package_config.json').deleteSync();
       expect(await mutate(), 0);
       expect(package.out, [
-        '  lib/a.dart: 1 mutants / killed 1 / survived 0 / timeout 0 '
-            '/ compile error 0 (1 from the last run, 0.0s)',
-        '  lib/b.dart: 2 mutants / killed 2 / survived 0 / timeout 0 '
-            '/ compile error 0 (2 from the last run, 0.0s)',
+        startsWith(
+          '  lib/a.dart: 1 mutants / killed 1 / survived 0 / timeout 0 '
+          '/ compile error 0 (1 from the last run, ',
+        ),
+        startsWith(
+          '  lib/b.dart: 2 mutants / killed 2 / survived 0 / timeout 0 '
+          '/ compile error 0 (2 from the last run, ',
+        ),
         'dart_mutant run: OK (3 mutants / killed 3 / survived 0 / timeout 0 / '
             'compile error 0)',
       ]);

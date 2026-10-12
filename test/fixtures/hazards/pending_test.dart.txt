@@ -1,0 +1,26 @@
+import 'dart:async';
+
+import 'package:hazard_fixture/pending.dart';
+import 'package:test/test.dart';
+
+void main() {
+  var ticks = 0;
+
+  test('starts something and does not wait for it', () {
+    unawaited(later(4));
+    // Never cancelled: it ticks through the tests after this one.
+    every(const Duration(milliseconds: 5), () => ticks++);
+    expect(seen, 0);
+  });
+
+  test('the answer arrives during a later test', () async {
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(seen, 8);
+    expect(ticks, greaterThan(2));
+  });
+
+  test('ticksIn', () {
+    expect(ticksIn(100, 20), 5);
+    expect(ticksIn(100, 0), 0);
+  });
+}

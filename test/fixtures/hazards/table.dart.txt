@@ -1,0 +1,18 @@
+int _scale(int value) => value > 2 ? value * 10 : value + 1;
+
+/// Computed when it is first read, and kept.
+final table = [for (var index = 0; index < 5; index++) _scale(index)];
+
+int lookup(int index) => index < 0 || index >= table.length ? -1 : table[index];
+
+class Rates {
+  /// Computed once as well, for the class.
+  static final byName = {'low': 5 + 1, 'high': 5 * 4};
+
+  static int of(String name) => byName[name] ?? 0;
+}
+
+/// The cases a test file declares its tests from.
+List<int> cases() => [for (var index = 0; index < 3; index++) index * 2];
+
+int half(int value) => value ~/ 2;

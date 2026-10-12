@@ -1,0 +1,19 @@
+import 'dart:isolate';
+
+int weigh(List<int> parcels) {
+  var total = 0;
+  for (final parcel in parcels) {
+    if (parcel > 10) {
+      total += parcel * 2;
+    } else {
+      total += parcel;
+    }
+  }
+  return total;
+}
+
+/// The same, in another isolate: no variable of this one is seen there.
+Future<int> weighElsewhere(List<int> parcels) =>
+    Isolate.run(() => weigh(parcels));
+
+int surcharge(int weight) => weight > 50 ? weight ~/ 10 : 0;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0-dev (in development)
+
+TODO
+
 ## 0.1.1 (not yet published)
 
 `--schemata` is withdrawn: it could report a mutant as killed that survives.

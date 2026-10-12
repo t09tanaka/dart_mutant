@@ -1,0 +1,8 @@
+import 'package:hazard_fixture/pair.dart';
+import 'package:test/test.dart';
+
+void main() {
+  // Each test file has its own count: this is the first call here.
+  test('first call', () => expect(next(), 1));
+  test('sum', () => expect(sum(2, 3), 5));
+}

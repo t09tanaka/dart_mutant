@@ -64,7 +64,6 @@ void main() {
   });
 
   test('the reasons, and the longest alternative', () {
-    expect(runsOnce, 'in an initializer that runs once in a process');
     expect(constantContext, 'in a constant');
     expect(noPlace, 'no expression or statement around it can take it');
     expect(longestAlternative, 4000);
@@ -193,14 +192,21 @@ void main() {
     });
 
     test('the initializer of a top-level variable and of a static field '
-        'runs once', () {
+        'is a place like any other: it runs once in an isolate, and every '
+        'mutant has an isolate of its own', () {
       const top = 'final x = 1 + 2;';
-      expect(places(top, change(top, '+', '-')), [runsOnce]);
+      expect(places(top, change(top, '+', '-')), [
+        'expression: 1 + 2 → 1 - 2',
+        noPlace,
+      ]);
       const field = 'class A { static final x = 1 + 2; }';
-      expect(places(field, change(field, '+', '-')), [runsOnce]);
+      expect(places(field, change(field, '+', '-')), [
+        'expression: 1 + 2 → 1 - 2',
+        noPlace,
+      ]);
     });
 
-    test('what is in no function and in no variable does not run once', () {
+    test('the default of a parameter', () {
       // The default of a parameter. That it has to be a constant is for
       // the analyzer to say.
       const source = 'void f([int a = 1 + 2]) {}';
@@ -218,14 +224,14 @@ void main() {
       ]);
     });
 
-    test('a function in such an initializer runs when it is called; the '
-        'function itself is made once', () {
+    test('a function in such an initializer, and the function itself', () {
       const source = 'final f = () { return 1 + 2; };';
       expect(places(source, change(source, '+', '-')), [
         'expression: 1 + 2 → 1 - 2',
         'statement: return 1 + 2; → return 1 - 2;',
         'statement: { return 1 + 2; } → { return 1 - 2; }',
-        runsOnce,
+        'expression: () { return 1 + 2; } → () { return 1 - 2; }',
+        noPlace,
       ]);
       // A function with a name is no value, wherever it is declared.
       const local = 'void f() { int g() => 1 + 2; }';

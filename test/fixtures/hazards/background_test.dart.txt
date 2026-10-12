@@ -1,0 +1,14 @@
+import 'package:hazard_fixture/background.dart';
+import 'package:test/test.dart';
+
+void main() {
+  // weigh() only ever runs in the other isolate.
+  test('weighs elsewhere', () async {
+    expect(await weighElsewhere([5, 20]), 45);
+  });
+
+  test('surcharge', () {
+    expect(surcharge(60), 6);
+    expect(surcharge(50), 0);
+  });
+}

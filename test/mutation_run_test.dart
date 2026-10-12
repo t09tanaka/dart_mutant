@@ -125,7 +125,7 @@ void main() {
       expect(report, {
         'schemaVersion': '2',
         'thresholds': {'high': 100, 'low': 100},
-        'framework': {'name': 'dart_mutant', 'version': '0.1.1'},
+        'framework': {'name': 'dart_mutant', 'version': packageVersion},
         'config': {'mutatorsVersion': 2},
         'files': {
           'lib/a.dart': {
@@ -337,7 +337,7 @@ void main() {
 
     test('what is kept of the input, key by key', () {
       expect(input.toJson(), {
-        'toolVersion': '0.1.1',
+        'toolVersion': packageVersion,
         'mutatorsVersion': 2,
         'command': ['dart', 'test'],
         'source': source,

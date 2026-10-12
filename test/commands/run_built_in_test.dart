@@ -240,11 +240,10 @@ void main() {
 }
 ''';
 
-/// A run with the mutants of a file built into one program (what
-/// `--schemata` asked for in 0.1.0) against the real test runner, on a
-/// package in a temporary directory. The command line refuses the option
-/// since 0.1.1, see test/commands/leftover_state_test.dart for why; the
-/// code is kept, and so are these tests of what it does.
+/// A run with the mutants of a file built in, each run by a test file of
+/// its own in one start of the test runner, against the real test runner,
+/// on a package in a temporary directory. That every mutant has the status
+/// of a start of its own is the subject of test/commands/hazards_test.dart.
 void main() {
   late Directory dir;
   late String slowLog;
@@ -393,8 +392,8 @@ dev_dependencies:
     orElse: () => '',
   );
 
-  test('a mutant that never ends does not hold the others: the driver is '
-      'ended, the mutant is measured the usual way, and another driver runs '
+  test('a mutant that never ends does not hold the others: the test run is '
+      'ended, the mutant is measured the usual way, and another one runs '
       'the rest', () async {
     // Whatever a run without a mutant takes on this machine, and a little:
     // the loop that never ends is over that as well.
@@ -418,9 +417,9 @@ dev_dependencies:
       out,
       contains(
         matches(
-          r'^  lib/sum\.dart: \d+ of \d+ mutant\(s\) built into one '
-          r'program, with ".* test --timeout 10s --reporter json '
-          r'test/dart_mutant_driver_test\.dart"',
+          r'^  lib/sum\.dart: \d+ of \d+ mutant\(s\) built in, each run '
+          r'by a test file of its own, with ".* test --timeout 10s '
+          r'--concurrency 1 --reporter json"',
         ),
       ),
     );
@@ -429,7 +428,7 @@ dev_dependencies:
       matches(
         r'^  lib/sum\.dart: \d+ killed with the mutants built in; \d+ not '
         r'killed that way are measured the usual way; 1 of them did not '
-        r'end, and the driver was ended$',
+        r'end, and the test run was ended$',
       ),
     );
     expect(err, [
@@ -478,7 +477,7 @@ dev_dependencies:
       matches(
         r'^  lib/hold\.dart: \d+ killed with the mutants built in; \d+ not '
         r'killed that way are measured the usual way; with 1 of them the '
-        r'driver used too much memory, and was ended$',
+        r'test run used too much memory, and was ended$',
       ),
     );
     expect(
@@ -493,23 +492,20 @@ dev_dependencies:
     );
   }, testOn: '!windows');
 
-  test('tests that pass only once in a process: nothing of the driver is '
-      'used', () async {
+  test('tests that pass only once in an isolate: every mutant has an '
+      'isolate of its own, as with a start of the test runner of its '
+      'own', () async {
     final builtIn = await mutate('lib/next.dart', schemata: true);
     expect(builtIn, [
       'ArithmeticOperator -: Killed',
       'NumberLiteral 2: Killed',
       'NumberLiteral 0: Killed',
     ]);
+    expect(err, isEmpty);
     expect(
-      err,
-      contains(
-        'dart_mutant run: lib/next.dart: the tests do not pass without a mutant '
-        'when they are run more than once in one process ("the first run '
-        'in a process" fails); its mutants are run the usual way',
-      ),
+      builtInLine('lib/next.dart'),
+      '  lib/next.dart: 3 killed with the mutants built in',
     );
-    expect(builtInLine('lib/next.dart'), isEmpty);
   });
 
   test('without the option the statuses are the same', () async {
@@ -572,21 +568,19 @@ dev_dependencies:
   });
 
   test('what cannot be built in is run the usual way, and the rest is '
-      'built in', () async {
+      'built in: also the initializer of a top-level variable, which runs '
+      'once in an isolate', () async {
     final builtIn = await mutate('lib/lookup.dart', schemata: true);
     expect(builtIn, hasLength(14));
     expect(builtIn, everyElement(endsWith(': Killed')));
     expect(
       out,
-      contains(startsWith('  lib/lookup.dart: 8 of 14 mutant(s) built')),
+      contains(startsWith('  lib/lookup.dart: 11 of 14 mutant(s) built')),
     );
     expect(
       builtInLine('lib/lookup.dart'),
-      matches(
-        r'^  lib/lookup\.dart: \d+ killed with the mutants built in; '
-        r'(\d+) cannot be built in \(\1 in an initializer that runs once '
-        r'in a process\)',
-      ),
+      '  lib/lookup.dart: 11 killed with the mutants built in; 3 cannot be '
+      'built in (3 in a constant)',
     );
   });
 
@@ -630,18 +624,19 @@ dev_dependencies:
       err,
       contains(
         'dart_mutant run: lib/twice.dart has a test (test/twice_test.dart) that '
-        'has a main() that is async; its mutants are not built into one '
-        'program',
+        'has a main() that is async; each of its mutants gets a start of '
+        'the test runner of its own',
       ),
     );
     expect(out.where((line) => line.contains('built in')), isEmpty);
   });
 
-  test('a mutant is at work while the tests are declared, and tests that '
-      'cannot be declared with it are a failing test', () async {
+  test('a mutant is at work while the tests are declared; tests that '
+      'cannot be declared with it are no failing test, and that mutant is '
+      'measured the usual way', () async {
     final builtIn = await mutate('lib/cases.dart', schemata: true);
     expect(builtIn, [
-      // main() throws.
+      // main() throws: the test file cannot be loaded.
       'ArrayDeclaration []: Killed',
       'NumberLiteral 2: Survived',
       'NumberLiteral 0: Survived',
@@ -653,7 +648,8 @@ dev_dependencies:
     ]);
     expect(
       builtInLine('lib/cases.dart'),
-      startsWith('  lib/cases.dart: 2 killed with the mutants built in; 5 '),
+      '  lib/cases.dart: 1 killed with the mutants built in; 6 not killed '
+      'that way are measured the usual way',
     );
 
     // The results are those of any run: the next one takes them over.
@@ -673,35 +669,33 @@ dev_dependencies:
     ]);
   });
 
-  test('a mutant the driver does not see killed is measured again: what a '
-      'process keeps hides it', () async {
+  test('what an isolate keeps hides no mutant: every mutant is at work '
+      'from the start of an isolate of its own', () async {
     final builtIn = await mutate('lib/square.dart', schemata: true);
     expect(builtIn, ['ArithmeticOperator /: Killed']);
     expect(
       builtInLine('lib/square.dart'),
-      '  lib/square.dart: 0 killed with the mutants built in; 1 not killed '
-      'that way are measured the usual way',
+      '  lib/square.dart: 1 killed with the mutants built in',
     );
   });
 
-  test('test files that only pass together in one process pass in the '
-      'driver, and are still not tests to judge a mutant by', () async {
+  test('test files that only pass together in one isolate do not pass: '
+      'every test file has an isolate of its own, as the usual way gives '
+      'it, and the file is not tested either way', () async {
     final builtIn = await mutate(
       'lib/pair.dart',
       schemata: true,
       plan: '${dir.path}/pair.json',
     );
-    // As without the option: the file is not in the report.
+    // As with --one-by-one: the file is not in the report.
     expect(builtIn, isEmpty);
-    expect(
-      builtInLine('lib/pair.dart'),
-      startsWith('  lib/pair.dart: 3 killed with the mutants built in'),
-    );
+    expect(builtInLine('lib/pair.dart'), isEmpty);
     expect(
       err,
       containsAllInOrder([
-        'dart_mutant run: lib/pair.dart: the tests do not pass the usual way in '
-            'a working copy; nothing of the driver is used',
+        'dart_mutant run: lib/pair.dart: the tests do not pass without a '
+            'mutant when the mutants are built in ("after the other file" '
+            'fails); its mutants are run the usual way',
         startsWith('dart_mutant run: lib/pair.dart has tests that fail in a '),
         'dart_mutant run: 1 file(s) could not be mutation tested',
         startsWith('  - lib/pair.dart: the tests fail without a mutant'),
@@ -733,7 +727,7 @@ dev_dependencies:
       // one no test fails on is measured the usual way.
       expect(
         out,
-        contains(startsWith('  lib/sign.dart: 5 of 10 mutant(s) built into')),
+        contains(startsWith('  lib/sign.dart: 5 of 10 mutant(s) built in,')),
       );
       expect(
         builtInLine('lib/sign.dart'),
@@ -775,13 +769,7 @@ dev_dependencies:
   group('interrupted', () {
     late CompiledCommandLine compiled;
 
-    // The command line refuses --schemata: such a run is started by a
-    // program of the tests.
-    setUpAll(
-      () => compiled = CompiledCommandLine(
-        entry: 'test/support/built_in_main.dart',
-      ),
-    );
+    setUpAll(() => compiled = CompiledCommandLine());
     tearDownAll(() => compiled.delete());
 
     test('SIGINT while a driver runs: the driver is ended, the package is '
@@ -789,6 +777,8 @@ dev_dependencies:
       final before = tree();
       final process = await Process.start(Platform.resolvedExecutable, [
         ...compiled.arguments,
+        'run',
+        '--force',
         'lib/sum.dart',
       ], workingDirectory: dir.path);
       final errors = process.stderr.transform(systemEncoding.decoder).join();
@@ -798,14 +788,14 @@ dev_dependencies:
             .transform(const LineSplitter()),
       );
       while (await lines.moveNext()) {
-        if (lines.current.contains('built into one program')) {
+        if (lines.current.contains('built in, each run by')) {
           break;
         }
       }
       // The driver is compiled and started, and gets to the mutant that
       // never ends.
       final driver = File(
-        '${dir.path}/$stateDir/work/1/test/dart_mutant_driver_test.dart',
+        '${dir.path}/$stateDir/work/1/test/dart_mutant_0_0_test.dart',
       );
       while (!driver.existsSync()) {
         await Future<void>.delayed(const Duration(milliseconds: 50));

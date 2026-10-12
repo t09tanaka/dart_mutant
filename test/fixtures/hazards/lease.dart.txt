@@ -1,0 +1,17 @@
+class Lease {
+  var _held = 0;
+
+  void acquire() {
+    _held++;
+  }
+
+  /// Throws when nothing is held.
+  void release() {
+    if (_held <= 0) {
+      throw StateError('nothing to release');
+    }
+    _held--;
+  }
+
+  bool get free => _held == 0;
+}

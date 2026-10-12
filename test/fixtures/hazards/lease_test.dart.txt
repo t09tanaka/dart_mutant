@@ -1,0 +1,38 @@
+import 'package:hazard_fixture/lease.dart';
+import 'package:test/test.dart';
+
+void main() {
+  late Lease lease;
+  final shared = Lease();
+
+  setUp(() {
+    lease = Lease()..acquire();
+    shared.acquire();
+  });
+
+  // Throws when the setUp above did not run, or when a mutant took the
+  // lease away: a tearDown that fails is a failed test.
+  tearDown(() {
+    lease.release();
+    shared.release();
+  });
+
+  test('held', () => expect(lease.free, isFalse));
+
+  test('free after a release, and held again for the tearDown', () {
+    lease.release();
+    expect(lease.free, isTrue);
+    lease.acquire();
+  });
+
+  test('the shared one is held by one test at a time', () {
+    expect(shared.free, isFalse);
+    shared.release();
+    expect(shared.free, isTrue);
+    shared.acquire();
+  });
+
+  test('releasing what is not held throws', () {
+    expect(Lease().release, throwsStateError);
+  });
+}

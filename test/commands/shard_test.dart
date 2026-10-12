@@ -370,7 +370,7 @@ void main() {
       expect(await mutate(['--report', at('again.json')], force: false), 1);
       expect(package.runs, hasLength(runsOfWhole + 2));
       expect(timeless(read('again.json')), whole);
-      expect(package.out, contains(contains('(10 from the last run, 0.0s)')));
+      expect(package.out, contains(contains('(10 from the last run, ')));
     });
 
     test('a part says how many of its own results are from the last '
@@ -382,8 +382,10 @@ void main() {
         0,
       );
       expect(package.out, [
-        '  lib/b.dart: 1 of 2 mutants / killed 1 / survived 0 / timeout 0 / '
-            'compile error 0 (1 from the last run, 0.0s)',
+        startsWith(
+          '  lib/b.dart: 1 of 2 mutants / killed 1 / survived 0 / timeout 0 / '
+          'compile error 0 (1 from the last run, ',
+        ),
         'dart_mutant run: OK (shard 1/2: 1 of 2 mutants / killed 1 / survived 0 '
             '/ timeout 0 / compile error 0)',
       ]);

@@ -1,0 +1,26 @@
+import 'package:hazard_fixture/table.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('lookup', () {
+    expect(lookup(0), 1);
+    expect(lookup(4), 40);
+    expect(lookup(9), -1);
+  });
+
+  test('lookup below', () => expect(lookup(-1), -1));
+
+  test('rates', () {
+    expect(Rates.of('low'), 6);
+    expect(Rates.of('high'), 20);
+    expect(Rates.of('none'), 0);
+  });
+
+  // Declared from the code under test: a mutant can change how many there
+  // are, and it is at work while they are declared.
+  final declared = cases();
+  for (final value in declared) {
+    test('half of $value', () => expect(half(value), value ~/ 2));
+  }
+  test('three cases', () => expect(declared, hasLength(3)));
+}

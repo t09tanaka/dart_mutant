@@ -1,9 +1,9 @@
 import 'shard.dart';
 
-/// Whether the mutants of a file are built into one program when
-/// `--no-schemata` is not given. The command line cannot ask for it:
-/// `--schemata` was withdrawn, see [schemataWithdrawn].
-const schemataByDefault = false;
+/// Whether the mutants of a file are built into the file and share one
+/// start of the test runner, each in a test file and an isolate of its own,
+/// when `--one-by-one` is not given.
+const schemataByDefault = true;
 
 /// What `--schemata` is answered with. The option of 0.1.0 ran the tests of
 /// a file once per mutant in one process, and a mutant no run of its own
@@ -54,9 +54,11 @@ class RunArgs {
   /// when the run is divided.
   final Shard? shard;
 
-  /// Whether the mutants of a file are built into one program. `false` for
-  /// `--no-schemata` and `null` without it; the command line never makes
-  /// it `true` ([schemataWithdrawn]).
+  /// Whether the mutants of a file are built into the file and share one
+  /// start of the test runner. `false` for `--one-by-one` (and for
+  /// `--no-schemata`, its name in 0.1) and `null` without it, which is
+  /// [schemataByDefault]; the command line never makes it `true`
+  /// (`--schemata` is refused, see [schemataWithdrawn]).
   final bool? schemata;
 
   /// `--only`, once per file: the run is limited to these targets.
@@ -129,7 +131,7 @@ const _valueOptions = [
 ];
 
 /// The options that take no value.
-const _flags = ['--force', '--schemata', '--no-schemata'];
+const _flags = ['--force', '--one-by-one', '--schemata', '--no-schemata'];
 
 const _options = [..._valueOptions, ..._flags];
 
@@ -206,7 +208,7 @@ ParsedArgs parseArgs(List<String> argv) {
         continue;
       }
       if (schemata != null) {
-        throw UsageError('--no-schemata is given twice');
+        throw UsageError('--one-by-one (or --no-schemata) is given twice');
       }
       schemata = false;
       continue;
@@ -309,9 +311,10 @@ Usage:
 Each file is changed in one place at a time (a mutant) and its tests are run
 on it. A mutant the tests do not notice survived.
 
-With more than one job the mutants are put into copies of the package (in
-.dart_tool/dart_mutant/work) and your files are not written. With one job
-the files are changed in place and put back.
+The mutants are put into copies of the package (in
+.dart_tool/dart_mutant/work) and your files are not written. Only with
+--one-by-one and one job, and in a package that cannot be copied, the files
+are changed in place and put back.
 
 Options:
   --dir <package>  The package to mutate (default: .). The files and
@@ -325,7 +328,7 @@ Options:
                    test/a_test.dart, whichever exist.
   --only <file>    Limit the run to this file of the plan or of the arguments.
                    May be given more than once. The report keeps what it says
-                   about the other files.
+                   about the other files, when this version wrote it.
   --report <path>  Where the report is written (a path as your shell sees it;
                    default: reports/mutation/mutation.json in the package),
                    in the mutation-testing-elements JSON schema.
@@ -339,13 +342,17 @@ Options:
                    and the version of this tool are the same.
   --jobs <n>       How many test runs are started at a time (default: a
                    quarter of the processors, at least 1 and at most 4).
-                   1 changes the files in place, one mutant at a time.
   --shard <i>/<n>  Run part i of n of the mutants of each file (mutant
                    number modulo n), for a run that is divided over several
                    machines. The report is then a part: the other mutants
                    are in it as Pending.
-  --no-schemata    One start of the test runner per mutant. This is what
-                   a run does; the option only says so.
+  --one-by-one     One start of the test runner per mutant. Without it the
+                   mutants of a file are built into the file where that can
+                   be done, and share one start: each is run by a test file
+                   of its own, in an isolate of its own. Only "killed" is
+                   taken from that; every other mutant gets a start of its
+                   own as well. The statuses are the same either way.
+  --no-schemata    The same as --one-by-one: its name in 0.1.
   --schemata       Withdrawn in 0.1.1, and refused (exit code 2). In 0.1.0
                    it could report a mutant as killed that survives a run
                    of its own.

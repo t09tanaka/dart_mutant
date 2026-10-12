@@ -1,0 +1,19 @@
+import 'dart:async';
+
+/// What the last call of [later] answered, when it has.
+int seen = 0;
+
+/// Answers after a while. Nobody has to wait for it.
+Future<int> later(int value) async {
+  await Future<void>.delayed(const Duration(milliseconds: 20));
+  final answer = value * 2;
+  seen = answer;
+  return answer;
+}
+
+/// Ticks until it is told to stop, which nobody may do.
+Timer every(Duration interval, void Function() tick) =>
+    Timer.periodic(interval, (_) => tick());
+
+int ticksIn(int milliseconds, int interval) =>
+    interval <= 0 ? 0 : milliseconds ~/ interval;

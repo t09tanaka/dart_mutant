@@ -134,7 +134,7 @@ Future<BuiltIn> buildIn(
   ], left);
 }
 
-/// What the drivers of a file found out.
+/// What the test runs with the mutants of a file built in found out.
 class BuiltInRun {
   const BuiltInRun({
     this.killed = const {},
@@ -147,37 +147,39 @@ class BuiltInRun {
   /// The mutants that are `Killed`, with the milliseconds of their tests.
   final Map<int, int> killed;
 
-  /// Why nothing of the drivers is used: every mutant is run the usual way.
+  /// Why nothing of these test runs is used: every mutant is run the usual
+  /// way.
   final String? failure;
 
   /// Why the whole run has to stop.
   final String? aborted;
 
-  /// How many drivers were ended because a mutant did not end within its
+  /// How many test runs were ended because a mutant did not end within its
   /// limit.
   final int unended;
 
-  /// How many drivers were ended because they held more memory than their
-  /// limit with a mutant at work.
+  /// How many test runs were ended because they held more memory than
+  /// their limit with a mutant at work.
   final int heavy;
 }
 
 String _inPackage(String root, String relativePath) =>
     p.joinAll([root, ...relativePath.split('/')]);
 
-/// How often the driver's notes are read while its tests are being declared,
-/// and how often the time limit is looked at.
+/// How often the time limit is looked at.
 const _tick = Duration(milliseconds: 200);
 
 /// Runs the tests of [path] on the mutants [ids] that are built into
-/// [content], in the working copies [copies]: in each, a driver runs the
-/// tests once without a mutant, then once per mutant, in one process.
+/// [content], in the working copies [copies]: in each, one start of the
+/// test runner runs a test file per mutant (a driver), one after the
+/// other, each in an isolate of its own, with the tests without a mutant
+/// first, in between and last.
 ///
-/// Only `Killed` is taken from a driver, and only with the tests without a
-/// mutant passing before and after: see [DriverLog.result]. A driver whose
-/// current mutant does not end within its limit is ended, and another one
-/// is started for the mutants after it. So is a driver that holds more
-/// memory than its limit with a mutant at work
+/// Only `Killed` is taken from such a test run, and only with the tests
+/// without a mutant passing before and after: see [DriverLog.result]. A
+/// test run whose current mutant does not end within its limit is ended,
+/// and another one is started for the mutants after it. So is one that
+/// holds more memory than its limit with a mutant at work
 /// ([DriverLog.memoryLimit]): that mutant is run the usual way, which
 /// measures it by itself.
 ///
@@ -198,8 +200,6 @@ Future<BuiltInRun> runBuiltIn({
   required SignalWatch signals,
 }) async {
   final directory = directoryOf(tests.first);
-  final driver = driverPathOf(tests);
-  final run = driverCommand(command, driver);
   final killed = <int, int>{};
   String? failure;
   String? aborted;
@@ -208,9 +208,17 @@ Future<BuiltInRun> runBuiltIn({
 
   Future<void> worker(String copy, List<int> share) async {
     final state = Directory(p.join(copy, '.dart_tool', 'dart_mutant_driver'));
-    final declared = File(p.join(state.path, 'declared'));
     final target = File(_inPackage(copy, path));
-    final driverFile = File(_inPackage(copy, driver));
+    final written = <File>[];
+    void removeDrivers() {
+      for (final file in written) {
+        if (file.existsSync()) {
+          file.deleteSync();
+        }
+      }
+      written.clear();
+    }
+
     try {
       for (final test in tests) {
         final bytes = File(_inPackage(root, test)).readAsBytesSync();
@@ -219,17 +227,6 @@ Future<BuiltInRun> runBuiltIn({
           ..writeAsBytesSync(bytes, flush: true);
       }
       target.writeAsStringSync(content, flush: true);
-      driverFile.writeAsStringSync(
-        driverSource(
-          testLibrary: testLibrary,
-          target: importOf(path, directory: directory, package: package),
-          tests: [
-            for (final test in tests) importOf(test, directory: directory),
-          ],
-          state: state.absolute.path,
-        ),
-        flush: true,
-      );
       var rest = share;
       while (rest.isNotEmpty &&
           failure == null &&
@@ -240,50 +237,62 @@ Future<BuiltInRun> runBuiltIn({
         }
         Directory(p.join(state.path, 'killed')).createSync(recursive: true);
         final plan = planOf(rest);
-        File(p.join(state.path, 'plan')).writeAsStringSync(plan.join('\n'));
+        final drivers = <String>[];
+        for (final (position, id) in plan.indexed) {
+          for (final (index, test) in tests.indexed) {
+            final driver = driverPathOf(tests, position, index);
+            drivers.add(driver);
+            written.add(
+              File(_inPackage(copy, driver))..writeAsStringSync(
+                driverSource(
+                  testLibrary: testLibrary,
+                  target: importOf(
+                    path,
+                    directory: directory,
+                    package: package,
+                  ),
+                  test: importOf(test, directory: directory),
+                  id: id,
+                  state: state.absolute.path,
+                ),
+                flush: true,
+              ),
+            );
+          }
+        }
         final log = DriverLog(plan);
 
         // The time limit: of the position that is at work, since it is.
         final stop = Completer<void>();
         final watch = Stopwatch()..start();
         int? at;
-        void readDeclared() {
-          if (log.started.isEmpty && declared.existsSync()) {
-            log.declared(declared.readAsStringSync());
-          }
-        }
-
         // The memory limit: of every position but the first, from what
         // the first one held.
         late final MemoryWatch memory;
         memory = MemoryWatch(
-          limit: () {
-            readDeclared();
-            return log.memoryLimit(memory.peak, memoryLimitOf);
-          },
+          limit: () => log.memoryLimit(memory.peak, memoryLimitOf),
         );
         final timer = Timer.periodic(_tick, (_) {
-          readDeclared();
           final current = log.current;
           if (current != at) {
             at = current;
             watch.reset();
           }
           final limit = log.limit(limitOf, first: baselineLimit);
-          // Also when another driver of the file has found that nothing of
-          // them will be used.
+          // Also when another test run of the file has found that nothing
+          // of them will be used.
           if ((watch.elapsed > limit || failure != null || aborted != null) &&
               !stop.isCompleted) {
             stop.complete();
           }
         });
-        // A line that comes after the driver was given up belongs to no
-        // driver: it must not reach the files of the next one.
+        // A line that comes after the test run was given up belongs to no
+        // test run: it must not reach the files of the next one.
         var running = true;
         final CommandResult result;
         try {
           result = await runCommand(
-            run,
+            driverCommand(command, drivers),
             workingDirectory: copy,
             capture: true,
             signals: signals,
@@ -300,6 +309,7 @@ Future<BuiltInRun> runBuiltIn({
           running = false;
           timer.cancel();
         }
+        removeDrivers();
         if (result.signal != null ||
             signals.signal != null ||
             failure != null ||
@@ -311,9 +321,6 @@ Future<BuiltInRun> runBuiltIn({
               'cannot start "${command.join(' ')}" (${result.startError})';
           return;
         }
-        if (log.started.isEmpty && declared.existsSync()) {
-          log.declared(declared.readAsStringSync());
-        }
         if (result.limited) {
           log.ended();
           result.overMemory ? heavy++ : unended++;
@@ -322,7 +329,7 @@ Future<BuiltInRun> runBuiltIn({
         if (found.failure != null) {
           failure ??=
               result.overMemory && found.failure == notEndedWithoutMutant
-              ? 'the driver used too much memory while the tests ran '
+              ? 'the test run used too much memory while the tests ran '
                     'without a mutant'
               : found.failure;
           return;
@@ -332,14 +339,12 @@ Future<BuiltInRun> runBuiltIn({
       }
     } on FileSystemException catch (error) {
       failure ??=
-          'the driver cannot be written into a working copy '
+          'the mutants cannot be written into a working copy '
           '(${error.osError?.message ?? error.message})';
     } finally {
       // The copy is used again, for this file and for the next ones.
       try {
-        if (driverFile.existsSync()) {
-          driverFile.deleteSync();
-        }
+        removeDrivers();
         target.writeAsBytesSync(original, flush: true);
       } on FileSystemException catch (error) {
         aborted ??=

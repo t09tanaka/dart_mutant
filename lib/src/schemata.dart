@@ -148,7 +148,6 @@ List<Wrap> inSourceOrderOf(List<Wrap> wraps) {
 }
 
 /// Why a mutant has no place where it can be built in.
-const runsOnce = 'in an initializer that runs once in a process';
 const constantContext = 'in a constant';
 const noPlace = 'no expression or statement around it can take it';
 
@@ -212,33 +211,18 @@ bool _isNoValue(Expression node) {
       node is FunctionExpression && parent is FunctionDeclaration;
 }
 
-/// True when [node] is in the initializer of a top-level variable or of a
-/// static field, outside every function in it: that code runs once in a
-/// process, when the variable is first read, so a mutant in it cannot be
-/// changed for another while the program runs.
-bool _runsOnce(AstNode node) {
-  for (AstNode? at = node; at != null; at = at.parent) {
-    if (at is FunctionBody) {
-      return false;
-    }
-    if (at is TopLevelVariableDeclaration) {
-      return true;
-    }
-    if (at is FieldDeclaration) {
-      return at.isStatic;
-    }
-  }
-  return false;
-}
-
 /// Where [mutant] (the mutant [id] of [source], whose syntax tree is [unit])
 /// could be built in: every expression and statement around it that is an
 /// expression or a statement with the mutant in it as well ([mutated] is the
 /// syntax tree of the mutated source), the smallest first.
 ///
 /// Left out: a statement that declares a name, what is no value, a
-/// constant, what runs once in a process, and what is longer than
-/// [longestAlternative].
+/// constant, and what is longer than [longestAlternative].
+///
+/// The initializer of a top-level variable or of a static field is a place
+/// like any other: it runs once in an isolate, when the variable is first
+/// read, and every mutant is run in an isolate of its own, in which it is
+/// at work from the start (see `driverSource`).
 Places placesOf(
   CompilationUnit unit,
   String source,
@@ -269,10 +253,6 @@ Places placesOf(
     }
     if (node.length + growth > longestAlternative) {
       break;
-    }
-    if (_runsOnce(node)) {
-      reason = runsOnce;
-      continue;
     }
     if (node is Expression && node.inConstantContext) {
       reason = constantContext;

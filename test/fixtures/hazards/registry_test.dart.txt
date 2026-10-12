@@ -1,4 +1,4 @@
-import 'package:leftover_fixture/registry.dart';
+import 'package:hazard_fixture/registry.dart';
 import 'package:test/test.dart';
 
 void main() {

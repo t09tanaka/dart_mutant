@@ -1,0 +1,12 @@
+import 'dart:io';
+
+/// Where the process is now.
+String here() => Directory.current.path;
+
+/// Moves the whole process: every isolate of it has this one directory.
+void goTo(String directory) {
+  Directory.current = directory;
+}
+
+bool isPackage(String directory) =>
+    File('$directory/pubspec.yaml').existsSync();

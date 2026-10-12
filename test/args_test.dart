@@ -49,8 +49,9 @@ void main() {
     expect(args.command, isEmpty);
   });
 
-  test('--no-schemata says what a run does anyway', () {
-    expect(runArgs(['run', '--no-schemata', 'a.dart']).schemata, isFalse);
+  test('--one-by-one, and its name in 0.1', () {
+    expect(runArgs(['run', '--one-by-one', 'a.dart']).schemata, isFalse);
+    expect(runArgs(['run', 'a.dart', '--no-schemata']).schemata, isFalse);
     // Not ours after --.
     expect(
       runArgs(['run', 'a.dart', '--', 'dart', 'test', '--schemata']).schemata,
@@ -58,8 +59,9 @@ void main() {
     );
   });
 
-  test('without either, the mutants are run one by one', () {
-    expect(schemataByDefault, isFalse);
+  test('without it, the mutants of a file share a start of the test '
+      'runner', () {
+    expect(schemataByDefault, isTrue);
   });
 
   test('RunArgs without arguments is a run in the current directory that '
@@ -310,9 +312,24 @@ void main() {
       '--no-schemata does not take a value',
     ),
     (
-      '--no-schemata twice',
-      ['run', 'a.dart', '--no-schemata', '--no-schemata'],
-      '--no-schemata is given twice',
+      '--one-by-one with a value',
+      ['run', 'a.dart', '--one-by-one=1'],
+      '--one-by-one does not take a value',
+    ),
+    (
+      '--one-by-one twice',
+      ['run', 'a.dart', '--one-by-one', '--one-by-one'],
+      '--one-by-one (or --no-schemata) is given twice',
+    ),
+    (
+      '--one-by-one under both names',
+      ['run', 'a.dart', '--no-schemata', '--one-by-one'],
+      '--one-by-one (or --no-schemata) is given twice',
+    ),
+    (
+      '--one-by-one for merge',
+      ['merge', 'a.json', '--report', 'b.json', '--one-by-one'],
+      'unknown argument for merge: --one-by-one',
     ),
     (
       '--schemata after --no-schemata',
@@ -388,6 +405,7 @@ void main() {
       '--jobs',
       '--schemata',
       '--no-schemata',
+      '--one-by-one',
     ]) {
       expect(help, contains(option));
     }
