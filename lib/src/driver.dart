@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
@@ -9,6 +10,17 @@ import 'schemata.dart';
 /// How many mutants are run between two runs of the tests without a mutant
 /// (see [planOf]).
 const mutantsBetweenChecks = 25;
+
+/// How many mutants a working copy has to have to do before another one is
+/// used as well: in every copy the tests are compiled once and run without
+/// a mutant first and last, which takes about as long as this many mutants.
+const mutantsPerDriver = 4;
+
+/// In how many working copies the [mutants] that are built into a file are
+/// run, with [jobs] of them at hand: one for every [mutantsPerDriver]
+/// mutants, and no more than there are.
+int driversFor({required int mutants, required int jobs}) =>
+    min(jobs, (mutants / mutantsPerDriver).ceil());
 
 /// Where the drivers of a file are written, and where they write down how
 /// their tests went: a directory of the tool in the working copy, relative

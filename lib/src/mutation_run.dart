@@ -29,6 +29,14 @@ const perTestTimeoutSeconds = 10;
 Duration processLimit(Duration baseline) =>
     baseline * 3 + const Duration(seconds: 20);
 
+/// How long the tests of one mutant may take as a process of their own,
+/// from the tests compiled once: three times that process without a mutant,
+/// plus 5 seconds. A mutant that is ended there is not judged there: it gets
+/// a start of the test runner of its own, with [processLimit], so this limit
+/// only says how long to wait before that.
+Duration driverLimit(Duration baseline) =>
+    baseline * 3 + const Duration(seconds: 5);
+
 /// How long the run without a mutant may take.
 const baselineLimit = Duration(minutes: 10);
 

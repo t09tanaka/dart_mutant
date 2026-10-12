@@ -30,6 +30,18 @@ DriverLog logOf(
 }
 
 void main() {
+  test('driversFor: a working copy for every 4 mutants, and no more than '
+      'there are jobs', () {
+    expect(mutantsPerDriver, 4);
+    expect(driversFor(mutants: 1, jobs: 6), 1);
+    expect(driversFor(mutants: 4, jobs: 6), 1);
+    expect(driversFor(mutants: 5, jobs: 6), 2);
+    expect(driversFor(mutants: 24, jobs: 6), 6);
+    expect(driversFor(mutants: 25, jobs: 6), 6);
+    expect(driversFor(mutants: 100, jobs: 2), 2);
+    expect(driversFor(mutants: 100, jobs: 1), 1);
+  });
+
   test('packageNameOf', () {
     expect(packageNameOf('name: a_b1\nversion: 1.0.0\n'), 'a_b1');
     expect(packageNameOf('# a pubspec\r\nname:   "quoted"\r\n'), 'quoted');

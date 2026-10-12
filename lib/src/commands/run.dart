@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
@@ -983,11 +982,11 @@ Future<int> _locked(
         }
         if (instead == null && built != null && built.ids.isNotEmpty) {
           // In every working copy the tests are compiled and run without
-          // a mutant before the first mutant: more copies only pay when
-          // each has enough to do.
-          final drivers = min(
-            copies.jobs,
-            (built.ids.length / mutantsBetweenChecks).ceil(),
+          // a mutant before the first mutant and after the last: more
+          // copies only pay when each has enough to do.
+          final drivers = driversFor(
+            mutants: built.ids.length,
+            jobs: copies.jobs,
           );
           List<String>? used;
           try {
@@ -1017,7 +1016,13 @@ Future<int> _locked(
               dart: dart,
               testLibrary: testLibrary!,
               package: packageNameOf(pubspec),
-              limitOf: limitOf,
+              // Whichever is shorter: a mutant that is ended there gets a
+              // start of the test runner of its own anyway.
+              limitOf: (baseline) {
+                final usual = limitOf(baseline);
+                final short = driverLimit(baseline);
+                return short < usual ? short : usual;
+              },
               memoryLimitOf: memoryLimitOf,
               signals: signals,
             );
