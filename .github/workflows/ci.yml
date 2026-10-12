@@ -14,8 +14,8 @@ permissions:
 
 jobs:
   # What says soonest that something is wrong: the analyzer, the formatter,
-  # the tests that start no process, the gates, and the hazards mutant by
-  # mutant (tool/quick_check.sh runs the same, without the gates).
+  # the tests that start no process, and the gates. With the job below it is
+  # what tool/quick_check.sh runs, and the gates.
   quick:
     name: Quick, Dart ${{ matrix.sdk }}
     runs-on: ubuntu-latest
@@ -43,6 +43,23 @@ jobs:
       - run: dart run test_gates selfcheck
       - if: matrix.sdk == 'stable'
         run: dart pub publish --dry-run
+
+  # The hazards mutant by mutant (the tag `hazards`): the longest single
+  # test file, so it has a job of its own beside the others.
+  hazards:
+    name: Hazards, Dart ${{ matrix.sdk }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [3.11.0, stable]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ matrix.sdk }}
+      - run: dart pub get
       # As many test runs at a time as the runner has processors.
       - run: HAZARDS_JOBS="$(nproc)" dart test --tags hazards
 
