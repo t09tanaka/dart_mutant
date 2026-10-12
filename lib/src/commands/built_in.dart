@@ -47,10 +47,12 @@ const ranElsewhere =
     'code of the file ran in another isolate or process than the tests, '
     'where no mutant is at work';
 
-/// Why nothing of the drivers of a file is used when they do not compile.
+/// Why nothing of the drivers of a file is used when they do not compile:
+/// compiling a driver runs its tests once, without a mutant.
 const notCompiled =
     'the tests cannot be compiled as a program of their own with the '
-    'mutants built in';
+    'mutants built in, or do not pass when they are run that way for the '
+    'first time';
 
 /// Why a mutant with a place was not built in.
 const changesProgram =

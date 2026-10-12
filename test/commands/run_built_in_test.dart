@@ -693,10 +693,10 @@ dev_dependencies:
     expect(
       err,
       containsAllInOrder([
-        'dart_mutant run: lib/pair.dart: the tests do not pass without a '
-            'mutant when they are run as a program of their own, with the '
-            'mutants built in; each of its mutants gets a start of the test '
-            'runner of its own',
+        'dart_mutant run: lib/pair.dart: the tests cannot be compiled as a '
+            'program of their own with the mutants built in, or do not pass '
+            'when they are run that way for the first time; each of its '
+            'mutants gets a start of the test runner of its own',
         startsWith('dart_mutant run: lib/pair.dart has tests that fail in a '),
         'dart_mutant run: 1 file(s) could not be mutation tested',
         startsWith('  - lib/pair.dart: the tests fail without a mutant'),
