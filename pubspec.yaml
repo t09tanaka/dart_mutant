@@ -3,7 +3,7 @@ description: >-
   Mutation testing for Dart and Flutter. Mutants are made from the syntax
   tree and from resolved types, and the ones that cannot compile are found
   before a test is run.
-version: 0.1.0
+version: 0.1.1
 repository: https://github.com/t09tanaka/dart_mutant
 issue_tracker: https://github.com/t09tanaka/dart_mutant/issues
 topics:
