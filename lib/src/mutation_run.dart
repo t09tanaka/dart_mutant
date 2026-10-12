@@ -299,10 +299,10 @@ class FileInput {
   /// The test command, without the test files.
   final List<String> command;
 
-  /// Whether the mutants of the file could share a start of the test
-  /// runner. A result that was measured that way is not reused by a run
-  /// with `--one-by-one`, which is how such a result is checked; nor the
-  /// other way round.
+  /// Whether the mutants of the file could be built into it and run by
+  /// processes of their own. A result that was measured that way is not
+  /// reused by a run with `--one-by-one`, which is how such a result is
+  /// checked; nor the other way round.
   final bool sharedStart;
 
   JsonObject toJson() => {

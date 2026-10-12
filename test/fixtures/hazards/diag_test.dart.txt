@@ -1,0 +1,7 @@
+import 'package:hazard_fixture/diag.dart';
+import 'package:test/test.dart';
+
+void main() {
+  // When it fails, what is printed has the form of a compiler error.
+  test('diag', () => expect(diag('a.dart', 3), 'a.dart:3:4: Error: bad'));
+}

@@ -203,7 +203,8 @@ String _inPackage(String root, String relativePath) =>
 /// limit, or holds more memory than its limit, is ended and run the usual
 /// way, which measures it by itself.
 ///
-/// The copies are left as they were: the file as [original], no driver.
+/// The copies are left as they were: the file as [original], and nothing
+/// of the drivers.
 Future<BuiltInRun> runBuiltIn({
   required List<String> copies,
   required String root,
@@ -220,7 +221,6 @@ Future<BuiltInRun> runBuiltIn({
   required int Function(int baseline) memoryLimitOf,
   required SignalWatch signals,
 }) async {
-  final directory = directoryOf(tests.first);
   final killed = <int, int>{};
   String? failure;
   String? aborted;
@@ -228,12 +228,9 @@ Future<BuiltInRun> runBuiltIn({
   var heavy = 0;
 
   Future<void> worker(String copy, List<int> share) async {
-    final state = Directory(p.join(copy, '.dart_tool', 'dart_mutant_driver'));
+    // The drivers, their programs and what they write down.
+    final state = Directory(_inPackage(copy, driverDirectory));
     final target = File(_inPackage(copy, path));
-    final drivers = [
-      for (final index in Iterable<int>.generate(tests.length))
-        File(_inPackage(copy, driverPathOf(tests, index))),
-    ];
     try {
       for (final test in tests) {
         final bytes = File(_inPackage(root, test)).readAsBytesSync();
@@ -259,11 +256,15 @@ Future<BuiltInRun> runBuiltIn({
       // The tests with the mutants in them, compiled once.
       final programs = <String>[];
       for (final (index, test) in tests.indexed) {
-        drivers[index].writeAsStringSync(
+        File(_inPackage(copy, driverPathOf(index))).writeAsStringSync(
           driverSource(
             testLibrary: testLibrary,
-            target: importOf(path, directory: directory, package: package),
-            test: importOf(test, directory: directory),
+            target: importOf(
+              path,
+              directory: driverDirectory,
+              package: package,
+            ),
+            test: importOf(test, directory: driverDirectory),
             index: index,
             state: state.absolute.path,
           ),
@@ -271,7 +272,7 @@ Future<BuiltInRun> runBuiltIn({
         );
         final program = p.join(state.absolute.path, 'driver_$index.jit');
         final compiled = await runCommand(
-          compileCommand(dart, driverPathOf(tests, index), program),
+          compileCommand(dart, driverPathOf(index), program),
           workingDirectory: copy,
           capture: true,
           signals: signals,
@@ -313,6 +314,7 @@ Future<BuiltInRun> runBuiltIn({
         final watch = Stopwatch()..start();
         final exitCodes = <int>[];
         var ended = false;
+        var readAsUncompiled = false;
         var held = 0;
         for (final program in programs) {
           final memory = MemoryWatch(
@@ -345,6 +347,15 @@ Future<BuiltInRun> runBuiltIn({
             break;
           }
           exitCodes.add(result.exitCode!);
+          // What a start of the test runner would be taken for with this
+          // output: the same question, of the same text.
+          readAsUncompiled |=
+              classifyRun(
+                exitCode: result.exitCode,
+                output: result.output,
+                timedOut: false,
+              ) ==
+              compileError;
           // A mutant is done with the first test file that fails.
           if (id != noMutant && result.exitCode != 0) {
             break;
@@ -359,6 +370,7 @@ Future<BuiltInRun> runBuiltIn({
             exitCodes: exitCodes,
             notes: notes.existsSync() ? notes.readAsLinesSync() : const [],
             ended: ended,
+            readAsUncompiled: readAsUncompiled,
           ),
           milliseconds: watch.elapsedMilliseconds,
         );
@@ -383,12 +395,10 @@ Future<BuiltInRun> runBuiltIn({
     } finally {
       // The copy is used again, for this file and for the next ones.
       try {
-        for (final driver in drivers) {
-          if (driver.existsSync()) {
-            driver.deleteSync();
-          }
-        }
         target.writeAsBytesSync(original, flush: true);
+        if (state.existsSync()) {
+          state.deleteSync(recursive: true);
+        }
       } on FileSystemException catch (error) {
         aborted ??=
             '$path: cannot take the mutants out of a working copy '

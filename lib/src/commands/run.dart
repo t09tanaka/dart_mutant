@@ -50,15 +50,6 @@ bool _sameBytes(List<int> a, List<int> b) {
 String _reason(FileSystemException error) =>
     error.osError?.message ?? error.message;
 
-/// True when a file next to [test] (relative to [root]) has a name that a
-/// driver could have.
-bool _hasDriverName(String root, String test) {
-  final directory = Directory(_inPackage(root, directoryOf(test)));
-  return directory.listSync().any(
-    (entity) => p.basename(entity.path).startsWith(driverPrefix),
-  );
-}
-
 /// The files of a run below [stateDir].
 class _State {
   _State(String root) : dir = _inPackage(root, stateDir);
@@ -911,10 +902,8 @@ Future<int> _locked(
               reasons.length == mutants.length) {
             notBuilt =
                 fileObstacle(source) ??
-                testsObstacle(
-                  testTexts,
-                  taken: _hasDriverName(root, target.tests.first),
-                );
+                targetObstacle(source) ??
+                testsObstacle(testTexts);
             if (notBuilt == null) {
               try {
                 built = await buildIn(

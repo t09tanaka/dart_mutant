@@ -109,6 +109,15 @@ void main() {
       );
     });
 
+    test('a test file that asks which program runs it', () {
+      expect(
+        driverObstacle(
+          "import 'dart:io';\nvoid main() { print(Platform.script); }",
+        ),
+        'asks which program runs it (Platform.script)',
+      );
+    });
+
     test('an annotation on the library, whichever directive carries it', () {
       expect(
         driverObstacle(
@@ -181,52 +190,71 @@ void main() {
     });
   });
 
-  test('driverNameOf: no test file, so that the test runner does not pick '
-      'it up', () {
-    expect(driverNameOf(0), 'dart_mutant_driver_0.dart');
-    expect(driverNameOf(12), 'dart_mutant_driver_12.dart');
-    expect(driverPrefix, 'dart_mutant_driver_');
+  group('programAsked', () {
+    test('nothing asks', () {
+      expect(programAsked('void main() {}'), isNull);
+      expect(programAsked(''), isNull);
+      expect(programAsked('final a = Platform.isLinux;'), isNull);
+      expect(programAsked('final a = Platform;'), isNull);
+      expect(programAsked('final a = Platform.'), isNull);
+      expect(programAsked('final script = other.script;'), isNull);
+      // In a string or a comment nothing is asked.
+      expect(
+        programAsked("// Platform.script\nfinal a = 'debugName';"),
+        isNull,
+      );
+      expect(targetObstacle('void main() {}'), isNull);
+    });
+
+    test('the script, the arguments of the VM, the package configuration '
+        'and the name of the isolate', () {
+      expect(programAsked('final a = Platform.script;'), 'Platform.script');
+      expect(
+        programAsked('final a = io.Platform . executableArguments;'),
+        'Platform.executableArguments',
+      );
+      expect(
+        programAsked('final a = Platform.packageConfig;'),
+        'Platform.packageConfig',
+      );
+      expect(programAsked('final a = Isolate.current.debugName;'), 'debugName');
+      expect(
+        targetObstacle('final a = Platform.script;'),
+        'asks which program runs it (Platform.script)',
+      );
+    });
   });
 
   group('testsObstacle', () {
     const fine = 'void main() {}';
 
-    test('tests in one directory that a driver can call', () {
+    test('one test file that a driver can call', () {
+      expect(testsObstacle({'test/a_test.dart': fine}), isNull);
+      expect(testsObstacle({'a_test.dart': fine}), isNull);
+    });
+
+    test('more than one test file: the test runner runs them in one '
+        'process, a driver each in its own', () {
+      const reason =
+          'has more than one test file, which share a process when the test '
+          'runner runs them';
+      expect(
+        testsObstacle({'test/a_test.dart': fine, 'test/b_test.dart': fine}),
+        reason,
+      );
       expect(
         testsObstacle({
           'test/a_test.dart': fine,
           'test/b_test.dart': fine,
-        }, taken: false),
-        isNull,
-      );
-      expect(testsObstacle({'a_test.dart': fine}, taken: false), isNull);
-    });
-
-    test('tests in two directories', () {
-      expect(
-        testsObstacle({
-          'test/a_test.dart': fine,
-          'test/x/b_test.dart': fine,
-        }, taken: false),
-        'has tests in more than one directory',
+          'test/x/c_test.dart': 'void other() {}',
+        }),
+        reason,
       );
     });
 
-    test('a file with a name that a driver could have', () {
+    test('a test a driver cannot call', () {
       expect(
-        testsObstacle({'test/a_test.dart': fine}, taken: true),
-        'has a file whose name starts with dart_mutant_driver_ next to its '
-        'tests',
-      );
-    });
-
-    test('a test a driver cannot call: the first one is named', () {
-      expect(
-        testsObstacle({
-          'test/a_test.dart': fine,
-          'test/b_test.dart': 'void other() {}',
-          'test/c_test.dart': 'main() async {}',
-        }, taken: false),
+        testsObstacle({'test/b_test.dart': 'void other() {}'}),
         'has a test (test/b_test.dart) that has no main()',
       );
     });
@@ -274,17 +302,10 @@ void main() {
     });
   });
 
-  test('driverPathOf', () {
-    expect(
-      driverPathOf(['test/x/a_test.dart', 'test/x/b_test.dart'], 1),
-      'test/x/dart_mutant_driver_1.dart',
-    );
-    expect(driverPathOf(['a_test.dart'], 0), 'dart_mutant_driver_0.dart');
-    // The first one decides; the caller has seen to it that they agree.
-    expect(
-      driverPathOf(['a/x_test.dart', 'b/y_test.dart', 'z_test.dart'], 2),
-      'a/dart_mutant_driver_2.dart',
-    );
+  test('driverPathOf: in the directory of the tool, not next to the tests', () {
+    expect(driverDirectory, '.dart_tool/dart_mutant_driver');
+    expect(driverPathOf(0), '.dart_tool/dart_mutant_driver/driver_0.dart');
+    expect(driverPathOf(12), '.dart_tool/dart_mutant_driver/driver_12.dart');
   });
 
   test('dartOf: what starts Dart programs, from the command that runs test '
@@ -449,8 +470,14 @@ void main(List<String> arguments) {
       List<String> notes, {
       int tests = 1,
       bool ended = false,
+      bool readAsUncompiled = false,
     }) => outcomeOf(
-      Ran(exitCodes: exitCodes, notes: notes, ended: ended),
+      Ran(
+        exitCodes: exitCodes,
+        notes: notes,
+        ended: ended,
+        readAsUncompiled: readAsUncompiled,
+      ),
       tests: tests,
     );
 
@@ -607,6 +634,20 @@ void main(List<String> arguments) {
       );
     });
 
+    test('a failure whose output a start of the test runner would be read '
+        'as a mutant that does not compile is none; tests that pass still '
+        'pass', () {
+      expect(of([255], ['declared 0', 'fail 0 0'], readAsUncompiled: true), (
+        outcome: Outcome.undecided,
+        tests: 1,
+      ));
+      expect(of([255], ['declared 0', 'fail 0 0']).outcome, Outcome.failed);
+      expect(
+        of([0], ['declared 0', 'pass 0 0'], readAsUncompiled: true).outcome,
+        Outcome.passed,
+      );
+    });
+
     test('what is no line of a driver is passed over', () {
       expect(
         of(
@@ -629,6 +670,7 @@ void main(List<String> arguments) {
         (outcome: Outcome.undecided, tests: 0),
       );
       expect(const Ran(exitCodes: [], notes: []).ended, isFalse);
+      expect(const Ran(exitCodes: [], notes: []).readAsUncompiled, isFalse);
     });
   });
 

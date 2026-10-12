@@ -44,6 +44,16 @@ import 'package:test/test.dart';
 /// - `place`: a test that changes the current directory, which the
 ///   isolates of a process share, and does not change it back.
 /// - `pair`: a file with two test files, each with a state of its own.
+///   `share`: two test files of which one changes the current directory,
+///   which the other then sees in the process they share under the test
+///   runner. With a process each, the mutant that makes the second one look
+///   there fails it. A file with more than one test file is not run by
+///   processes of its own for that.
+/// - `diag`: a test that prints the form of a compiler error when it
+///   fails, which a start of the test runner is read as a mutant that does
+///   not compile. A failure with such output is not believed.
+/// - `whoami`: code that asks for the name of its isolate, which is another
+///   one in a program of its own than under the test runner.
 /// - `outside`: what fails outside the body of a test, each by a mutant of
 ///   its own: while the tests are declared, in a `tearDownAll`, in a
 ///   future nobody waits for, when the test has ended, a callback that is
@@ -82,7 +92,16 @@ void main() {
     'outside',
     'halt',
     'ledger',
+    'share',
+    'diag',
+    'whoami',
   ];
+
+  /// The files with more than one test file, and their test files.
+  const several = {
+    'pair': ['pair_first_test', 'pair_second_test'],
+    'share': ['share_first_test', 'share_second_test'],
+  };
 
   /// How the mutants of each file that are built in have to go: how many
   /// there are, how many of them are killed by a process of their own, and
@@ -99,7 +118,6 @@ void main() {
     'pending': '12 of 13 built in, 9 killed there, 3 left',
     'lease': '14 of 14 built in, 13 killed there, 1 left',
     'place': '2 of 2 built in, 2 killed there, 0 left',
-    'pair': '3 of 3 built in, 3 killed there, 0 left',
     'cli': '17 of 17 built in, 12 killed there, 5 left',
     // Its setUpAll fails with two of them: the process fails, and no test
     // of it was written down as failed.
@@ -113,6 +131,8 @@ void main() {
     // The mutants that end the process end it with 0: no test failed.
     'halt': '8 of 9 built in, 2 killed there, 6 left',
     'ledger': '7 of 7 built in, 4 killed there, 3 left',
+    // Every failure of it is printed in the form of a compiler error.
+    'diag': '4 of 4 built in, 0 killed there, 4 left',
   };
   final givenUp = {
     for (final name in ['background', 'codec', 'shout'])
@@ -120,6 +140,15 @@ void main() {
           'dart_mutant run: lib/$name.dart: code of the file ran in another '
           'isolate or process than the tests, where no mutant is at work; '
           'each of its mutants gets a start of the test runner of its own',
+    for (final name in several.keys)
+      name:
+          'dart_mutant run: lib/$name.dart has more than one test file, which '
+          'share a process when the test runner runs them; each of its '
+          'mutants gets a start of the test runner of its own',
+    'whoami':
+        'dart_mutant run: lib/whoami.dart asks which program runs it '
+        '(debugName); each of its mutants gets a start of the test runner of '
+        'its own',
   };
 
   /// The mutants that would be killed by mistake if they shared an isolate
@@ -141,6 +170,12 @@ void main() {
     'lib/ledger.dart#1 BlockStatement {} 6:14-10:2',
     'lib/ledger.dart#3 ConditionalExpression false 7:7-7:29',
     'lib/ledger.dart#4 BlockStatement {} 7:31-9:4',
+    // Makes the second test file look where the first one left the
+    // process they share.
+    'lib/share.dart#? ConditionalExpression true 4:5-4:13',
+    // Asks for the name of the isolate, which is not `main` under the test
+    // runner.
+    'lib/whoami.dart#? BooleanLiteral true 3:24-3:29',
   ];
 
   /// The mutants of the package, by file, each as `id mutator replacement
@@ -219,9 +254,7 @@ dev_dependencies:
     write('bin/shout.dart', fixture('shout_bin'));
     for (final name in files) {
       write('lib/$name.dart', fixture(name));
-      final tests = name == 'pair'
-          ? ['pair_first_test', 'pair_second_test']
-          : ['${name}_test'];
+      final tests = several[name] ?? ['${name}_test'];
       for (final test in tests) {
         write('test/$test.dart', fixture(test));
       }
@@ -318,8 +351,10 @@ dev_dependencies:
     expect(went, shared, reason: together.lines.join('\n'));
   });
 
-  test('the files whose code runs where no mutant is at work are given up, '
-      'and say so; no other file is', () {
+  test('the files that cannot be judged by processes of their own are given '
+      'up, and say why: code that runs where no mutant is at work, more '
+      'than one test file, code that asks which program runs it; no other '
+      'file is', () {
     for (final MapEntry(key: name, value: line) in givenUp.entries) {
       expect(together.lines, contains(line), reason: name);
       expect(

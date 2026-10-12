@@ -1,0 +1,19 @@
+import 'dart:io';
+
+import 'package:hazard_fixture/share.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('reads', () async {
+    // Until the other test file has moved the process, when there is one
+    // in this process.
+    for (
+      var waited = 0;
+      waited < 40 && !Directory.current.path.endsWith('test');
+      waited++
+    ) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    expect(lookup(), isTrue);
+  });
+}

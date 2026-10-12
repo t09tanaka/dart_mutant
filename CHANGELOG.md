@@ -1,43 +1,67 @@
 # Changelog
 
-## 0.2.0-dev (in development)
+## 0.2.0 (2026-10-12)
+
+The tests of a file are compiled once for all its mutants, and every mutant
+is run by a process of its own. The statuses are those of 0.1.1, which
+`--one-by-one` still measures.
 
 - **The tests of a file are compiled once for all its mutants, and every
   mutant is run by a process of its own.** The mutants of a file are built
   into it behind a variable, as `--schemata` of 0.1.0 built them in; the
   tests of the file are compiled once with them (`dart compile
-  jit-snapshot`),
-  and that program is started once per mutant. A start costs a tenth of a
-  second or two, where a start of the test runner costs a second or more.
-  This is the default for a pure Dart package. The mutants of a Flutter
-  package each get a start of `flutter test`, as before.
-- Nothing is shared between two mutants that a start of the test runner
-  per mutant does not share either: not the program, and not what a process
-  has beside it. `--schemata` of 0.1.0 ran every mutant in one process and
-  one isolate, and was withdrawn for what the tests left behind there.
+  jit-snapshot`), and that program is started once per mutant. A start
+  costs a tenth of a second or two, where a start of the test runner costs
+  a second or more. This is the default for a pure Dart package. The
+  mutants of a Flutter package each get a start of `flutter test`, as
+  before.
+- **Why a process, and not less.** `--schemata` of 0.1.0 ran every mutant
+  in one process and one isolate, and was withdrawn for what the tests left
+  behind there. An isolate per mutant in one process keeps the variables of
+  the program apart, and was what this version did while it was developed.
+  It is not enough: what belongs to a process is shared by its isolates
+  (the current directory, the exit code, a file with the process id in its
+  name, what native code keeps), and a mutant that empties the code that
+  clears such a thing was killed by what the mutant before it had left. A
+  process per mutant shares nothing that a start of the test runner per
+  mutant does not share either.
 - **Only `Killed` is taken from these processes**, and only when two sides
   agree: the program wrote down itself, in a file of the tool, that a test
-  failed (nothing a test prints is read), and its process ended with
-  another exit code than 0. A mutant no test fails on, one whose process
-  fails without a test of it having failed (a `setUpAll`, an error that
-  arrives when its test has ended), one that does not end, and what cannot
-  be built in get a start of the test runner of their own, as before.
+  failed (no result is read from what a process prints), and its process
+  ended with another exit code than 0. A mutant no test fails on, one whose
+  process fails without a test of it having failed (a `setUpAll`, an error
+  that arrives when its test has ended), one that does not end or holds too
+  much memory, and what cannot be built in get a start of the test runner
+  of their own, as before. `Survived`, `Timeout` and a `CompileError` of a
+  test run are always the verdict of a start of the test runner.
+- A failure is not believed either when what the process printed has the
+  form of a compiler error: a start of the test runner with that output is
+  read as `CompileError` (as 0.1 reads it), so the mutant gets that start.
 - A test of this package requires that every mutant has the status of a
   start of the test runner of its own, of a package of tests that are easy
   to get wrong (`test/fixtures/hazards`, `test/commands/hazards_test.dart`):
-  every mutant of every file is compared both ways, the mutants that
-  sharing a process would kill by mistake are named, and how many mutants
-  of each file were built in, killed that way and left is held.
+  every mutant of every file is compared both ways, the mutants that would
+  be killed by mistake are named, and how many mutants of each file were
+  built in, killed that way and left is held.
 - Code of the file that runs in another isolate or process than the tests
   is noticed: no mutant is at work there, so nothing of these processes is
   used for that file.
 - A mutant in the initializer of a top-level variable or of a `static`
   field can be built in: the initializer runs once in a process, and every
   mutant has its own.
-- Not built in: a package whose test command does not end in `dart test`,
-  one whose `dart_test.yaml` says more than the names of tags (the tests
-  are run without the test runner, which is what reads that file), a test
-  file with an annotation on its library or an `async` `main`.
+- Not built in, each with a start of the test runner per mutant and a line
+  that says why:
+  - a package whose test command does not end in `dart test`, and one whose
+    `dart_test.yaml` says more than the names of tags (the tests are run
+    without the test runner, which is what reads that file);
+  - a file with more than one test file: the test runner runs them in one
+    process, where a test of one can pass because of what a test of the
+    other did to the process;
+  - a file that asks which program runs it, or whose test does
+    (`Platform.script`, `Platform.executableArguments`,
+    `Platform.packageConfig`, the `debugName` of an isolate);
+  - a test file with an annotation on its library, without a `main()`, or
+    with a `main` that takes arguments or is `async`.
 - `--one-by-one`: one start of the test runner per mutant, as 0.1 ran
   them. `--no-schemata` is kept as another name for it. `--schemata` is
   still refused.
@@ -50,6 +74,14 @@
   package that cannot be copied.
 - The help says of `--only` that the other files of a report are kept when
   this version wrote it (as 0.1.1 does).
+- For a tool that starts this one: the arguments of `run` and `merge`, the
+  plan file, the report, the exit codes, the output of `--version` and the
+  last line (`dart_mutant run: OK (…)` / `FAILED (…)`) are those of 0.1.1.
+  New are `--one-by-one`, lines on stdout and stderr that say how the
+  mutants of a file were run, and that a run with one job no longer writes
+  the files of the package. `test_gates` 0.2.0 names the versions it works
+  with (0.1.1 and later 0.1.x) and refuses this one: it takes a version of
+  `test_gates` that names 0.2.
 
 ## 0.1.1 (2026-10-12)
 

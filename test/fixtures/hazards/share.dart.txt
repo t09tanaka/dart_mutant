@@ -1,0 +1,4 @@
+import 'dart:io';
+
+bool lookup({bool relative = false}) =>
+    relative ? File('share_second_test.dart').existsSync() : true;

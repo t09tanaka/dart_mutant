@@ -10,13 +10,19 @@ import 'schemata.dart';
 /// (see [planOf]).
 const mutantsBetweenChecks = 25;
 
-/// What the name of a driver starts with: the program that runs a test
-/// file of a file on one of its built-in mutants.
-const driverPrefix = 'dart_mutant_driver_';
+/// Where the drivers of a file are written, and where they write down how
+/// their tests went: a directory of the tool in the working copy, relative
+/// to it. A driver is the program that runs a test file of a file on one
+/// of its built-in mutants.
+///
+/// Not next to the tests: code that lists the files of the package (a tool
+/// that looks for test files, and its tests) would find one file more there
+/// than a start of the test runner shows it.
+const driverDirectory = '.dart_tool/dart_mutant_driver';
 
-/// The name of the driver of test file number [test] of a file. It is no
-/// test file: the test runner does not pick it up.
-String driverNameOf(int test) => '$driverPrefix$test.dart';
+/// The path of the driver of test file number [test] of a file, relative
+/// to the working copy.
+String driverPathOf(int test) => '$driverDirectory/driver_$test.dart';
 
 final _pubspecName = RegExp(r'''^name:\s*['"]?([A-Za-z_][A-Za-z0-9_]*)''');
 
@@ -65,6 +71,43 @@ String directoryOf(String path) =>
 String dartString(String text) =>
     "'${text.replaceAll(r'\', r'\\').replaceAll("'", r"\'").replaceAll(r'$', r'\$').replaceAll('\n', r'\n').replaceAll('\r', r'\r')}'";
 
+/// What of `Platform` says which program runs the code: a driver is another
+/// program than the test runner, started with other arguments.
+const _ofTheProgram = {'script', 'executableArguments', 'packageConfig'};
+
+/// Where [source] asks which program runs it, as it is written
+/// (`Platform.script`, `debugName`), or `null` when it does not.
+///
+/// Under the test runner a test runs in an isolate that the runner started
+/// and named, from a compiled file of the runner; a driver is the program
+/// itself, in the first isolate of its process. Code that asks can go
+/// another way here than there, so the file is not run by a driver. Only
+/// the names are looked for, in the file and in its test: what a library
+/// they import asks is not seen.
+String? programAsked(String source) {
+  final unit = parseString(content: source, throwIfDiagnostics: false).unit;
+  for (var token = unit.beginToken; !token.isEof; token = token.next!) {
+    if (token.lexeme == 'debugName') {
+      return 'debugName';
+    }
+    // The token at the end of a file is its own next one.
+    final name = token.next!.next!;
+    if (token.lexeme == 'Platform' &&
+        token.next!.lexeme == '.' &&
+        _ofTheProgram.contains(name.lexeme)) {
+      return 'Platform.${name.lexeme}';
+    }
+  }
+  return null;
+}
+
+/// Why the file under test with the source [source] is not run by a
+/// driver, or `null` when it can be: see [programAsked].
+String? targetObstacle(String source) {
+  final asked = programAsked(source);
+  return asked == null ? null : 'asks which program runs it ($asked)';
+}
+
 /// Why the tests in [test] (the source of a test file) cannot be run by a
 /// driver, or `null` when they can: the driver calls `main()` of the file
 /// from its own `main()`, with a mutant at work, in a process without the
@@ -73,7 +116,12 @@ String dartString(String text) =>
 /// - `main` has to be there, take no argument and not be `async`.
 /// - An annotation on the library (`@Timeout`, `@TestOn`, `@Retry`, `@Tags`,
 ///   `@Skip`) is for the test runner, which is not there.
+/// - It may not ask which program runs it ([programAsked]).
 String? driverObstacle(String test) {
+  final asked = programAsked(test);
+  if (asked != null) {
+    return 'asks which program runs it ($asked)';
+  }
   final unit = parseString(content: test, throwIfDiagnostics: false).unit;
   final annotated = [
     for (final directive in unit.directives)
@@ -98,16 +146,18 @@ String? driverObstacle(String test) {
   return 'has no main()';
 }
 
-/// Why the test files [tests] (path → source) cannot be run by drivers, or
-/// `null` when they can. The drivers are put next to them, so that they
-/// import what the test files import; they have to be in one directory, in
-/// which no file has a name that a driver could have ([taken]).
-String? testsObstacle(Map<String, String> tests, {required bool taken}) {
-  if ({for (final test in tests.keys) directoryOf(test)}.length != 1) {
-    return 'has tests in more than one directory';
-  }
-  if (taken) {
-    return 'has a file whose name starts with $driverPrefix next to its tests';
+/// Why the test files [tests] (path → source) cannot be run by a driver, or
+/// `null` when they can.
+///
+/// - There has to be one test file. One start of the test runner runs the
+///   test files of a file in one process, each in an isolate of its own:
+///   they share what belongs to a process (its current directory, its exit
+///   code, a file with its id in the name), and a test of one can pass
+///   because of what a test of another did. With a process each, it fails.
+String? testsObstacle(Map<String, String> tests) {
+  if (tests.length > 1) {
+    return 'has more than one test file, which share a process when the test '
+        'runner runs them';
   }
   for (final MapEntry(key: path, value: source) in tests.entries) {
     final obstacle = driverObstacle(source);
@@ -136,14 +186,6 @@ String? configObstacle(String? config) =>
     ? null
     : 'has a dart_test.yaml that says more than the names of tags, which '
           'only the test runner reads';
-
-/// Where the driver of test file number [test] of the test files [tests]
-/// is put: next to them.
-String driverPathOf(List<String> tests, int test) {
-  final directory = directoryOf(tests.first);
-  final name = driverNameOf(test);
-  return directory.isEmpty ? name : '$directory/$name';
-}
 
 /// What starts Dart programs, given the command that runs test files:
 /// [command] without its `test` at the end (`dart test` → `dart`, `fvm dart
@@ -344,7 +386,12 @@ const notPassingWithoutMutant =
 /// What the drivers of one position of a plan did: one process per test
 /// file, in the order of the test files, until one of them failed.
 class Ran {
-  const Ran({required this.exitCodes, required this.notes, this.ended = false});
+  const Ran({
+    required this.exitCodes,
+    required this.notes,
+    this.ended = false,
+    this.readAsUncompiled = false,
+  });
 
   /// The exit code of each process that was started and ended by itself.
   final List<int> exitCodes;
@@ -356,6 +403,14 @@ class Ran {
 
   /// True when a limit of time or of memory ended a process.
   final bool ended;
+
+  /// True when a start of the test runner that printed what these processes
+  /// printed would be read as a mutant that does not compile (`classifyRun`
+  /// looks for the form of a compiler error in the output, and a failing
+  /// test can print one). Nothing is taken from the output; a failure is
+  /// only not believed here, and the mutant gets its start of the test
+  /// runner, which says what it is.
+  final bool readAsUncompiled;
 }
 
 /// What is known of a position.
@@ -384,7 +439,8 @@ enum Outcome {
 /// test of it having failed (a `setUpAll` or `tearDownAll`, an error that
 /// arrives when its test has ended, a test file that cannot declare its
 /// tests, a test that ends the process), or a test that fails where the
-/// process ends with 0.
+/// process ends with 0. Nor is a failure one when the output would be read
+/// as a mutant that does not compile ([Ran.readAsUncompiled]).
 ///
 /// **All tests passed** when every test file had its process, each ended
 /// with 0 and declared its tests, and no test failed or was left out.
@@ -418,7 +474,7 @@ enum Outcome {
   return (
     outcome: ran.ended
         ? Outcome.undecided
-        : failed.isNotEmpty
+        : failed.isNotEmpty && !ran.readAsUncompiled
         ? Outcome.failed
         : clean
         ? Outcome.passed

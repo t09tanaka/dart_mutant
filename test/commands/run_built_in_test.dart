@@ -679,30 +679,34 @@ dev_dependencies:
     );
   });
 
-  test('test files that only pass together do not pass: every test file '
-      'has a process of its own, and the usual way gives each an isolate '
-      'of its own; the file is not tested either way', () async {
-    final builtIn = await mutate(
-      'lib/pair.dart',
-      schemata: true,
-      plan: '${dir.path}/pair.json',
-    );
-    // As with --one-by-one: the file is not in the report.
-    expect(builtIn, isEmpty);
-    expect(builtInLine('lib/pair.dart'), isEmpty);
-    expect(
-      err,
-      containsAllInOrder([
-        'dart_mutant run: lib/pair.dart: the tests cannot be compiled as a '
-            'program of their own with the mutants built in, or do not pass '
-            'when they are run that way for the first time; each of its '
-            'mutants gets a start of the test runner of its own',
-        startsWith('dart_mutant run: lib/pair.dart has tests that fail in a '),
-        'dart_mutant run: 1 file(s) could not be mutation tested',
-        startsWith('  - lib/pair.dart: the tests fail without a mutant'),
-      ]),
-    );
-  });
+  test(
+    'a file with two test files is not built in: the test runner runs '
+    'them in one process, and each of its mutants gets a start of its '
+    'own (here the tests only pass together, and fail that way too)',
+    () async {
+      final builtIn = await mutate(
+        'lib/pair.dart',
+        schemata: true,
+        plan: '${dir.path}/pair.json',
+      );
+      // As with --one-by-one: the file is not in the report.
+      expect(builtIn, isEmpty);
+      expect(builtInLine('lib/pair.dart'), isEmpty);
+      expect(
+        err,
+        containsAllInOrder([
+          'dart_mutant run: lib/pair.dart has more than one test file, which '
+              'share a process when the test runner runs them; each of its '
+              'mutants gets a start of the test runner of its own',
+          startsWith(
+            'dart_mutant run: lib/pair.dart has tests that fail in a ',
+          ),
+          'dart_mutant run: 1 file(s) could not be mutation tested',
+          startsWith('  - lib/pair.dart: the tests fail without a mutant'),
+        ]),
+      );
+    },
+  );
 
   test('with --shard each part builds in its own mutants, and the parts '
       'put together are the run that was not divided', () async {
@@ -796,7 +800,7 @@ dev_dependencies:
       // The driver is compiled and started, and gets to the mutant that
       // never ends.
       final driver = File(
-        '${dir.path}/$stateDir/work/1/test/dart_mutant_driver_0.dart',
+        '${dir.path}/$stateDir/work/1/.dart_tool/dart_mutant_driver/driver_0.dart',
       );
       while (!driver.existsSync()) {
         await Future<void>.delayed(const Duration(milliseconds: 50));
