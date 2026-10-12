@@ -28,6 +28,39 @@ int sumTo(int n) {
 }
 ''';
 
+// The same loop in a file with enough mutants to be built in by default
+// (mutantsToBuildIn), for the run that is started as a process.
+const longSum = '''
+int sumTo(int n) {
+  var total = 0;
+  for (var i = 0; i < n; i++) {
+    total += i;
+  }
+  return total;
+}
+
+int mix(int a, int b, int c) {
+  final first = a * 2 + b * 3 - c * 4;
+  final second = (a - b) * (b + c) - (c - a) * 5;
+  final third = a > b ? a + 6 : b - 7;
+  return first + second * 8 - third * 9;
+}
+''';
+
+const longSumTest = '''
+import 'package:built_in_fixture/long_sum.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('nothing below one but zero', () => expect(sumTo(1), 0));
+  test('the numbers below four', () => expect(sumTo(4), 6));
+  test('mix', () {
+    expect(mix(1, 2, 3), -79);
+    expect(mix(3, 2, 1), 31);
+  });
+}
+''';
+
 const sumTest = '''
 import 'package:built_in_fixture/sum.dart';
 import 'package:test/test.dart';
@@ -294,6 +327,8 @@ dev_dependencies:
 ''');
     write('lib/sum.dart', sum);
     write('test/sum_test.dart', sumTest);
+    write('lib/long_sum.dart', longSum);
+    write('test/long_sum_test.dart', longSumTest);
     write('lib/hold.dart', hold);
     write('test/hold_test.dart', holdTest);
     write('lib/next.dart', next);
@@ -871,7 +906,7 @@ dev_dependencies:
         ...compiled.arguments,
         'run',
         '--force',
-        'lib/sum.dart',
+        'lib/long_sum.dart',
       ], workingDirectory: dir.path);
       final errors = process.stderr.transform(systemEncoding.decoder).join();
       final lines = StreamIterator(
