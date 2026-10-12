@@ -76,6 +76,11 @@ void main() {
   late _Run usual;
   late _Run together;
 
+  /// How many test runs each of the two runs starts at a time: 2, or what
+  /// `HAZARDS_JOBS` says (tool/quick_check.sh, for a machine with cores to
+  /// spare).
+  final jobs = Platform.environment['HAZARDS_JOBS'] ?? '2';
+
   const files = [
     'registry',
     'counter',
@@ -190,7 +195,7 @@ void main() {
       '${dir.path}/plan.json',
       '--force',
       '--jobs',
-      '2',
+      jobs,
       if (oneByOne) '--one-by-one',
       '--',
       Platform.resolvedExecutable,
