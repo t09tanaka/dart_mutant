@@ -74,6 +74,10 @@ is run by a process of its own. The statuses are those of 0.1.1, which
   package that cannot be copied.
 - The help says of `--only` that the other files of a report are kept when
   this version wrote it (as 0.1.1 does).
+- A run that ran tests on mutants and took longer than five minutes says,
+  in a line on stdout before the last one, into how many parts to divide it
+  to wait about five minutes (`--shard`, then `merge`). It is an estimate
+  from the time of this run. The last line is the one it was.
 - For a tool that starts this one: the arguments of `run` and `merge`, the
   plan file, the report, the exit codes, the output of `--version` and the
   last line (`dart_mutant run: OK (…)` / `FAILED (…)`) are those of 0.1.1.
