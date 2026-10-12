@@ -1,4 +1,4 @@
-@Tags(['process'])
+@Tags(['process', 'hazards'])
 @Timeout(Duration(minutes: 15))
 library;
 
@@ -43,6 +43,12 @@ import 'package:test/test.dart';
 /// - `pair`: a file with two test files, each with a state of its own.
 void main() {
   late Directory dir;
+
+  /// How many test runs each of the two runs starts at a time: 2, or what
+  /// `HAZARDS_JOBS` says (tool/quick_check.sh and CI, where there are cores
+  /// to spare).
+  final jobs = Platform.environment['HAZARDS_JOBS'] ?? '2';
+
   late ({Map<String, String> statuses, int exitCode, List<String> lines}) usual;
   late ({Map<String, String> statuses, int exitCode, List<String> lines})
   together;
@@ -93,7 +99,7 @@ void main() {
       '${dir.path}/plan.json',
       '--force',
       '--jobs',
-      '2',
+      jobs,
       if (oneByOne) '--one-by-one',
       '--',
       Platform.resolvedExecutable,

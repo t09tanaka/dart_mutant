@@ -640,6 +640,8 @@ The code under `lib/src/` is not an API. What decides something is in pure funct
 
 The tests under `test/commands` start processes (the command line, with a stand-in for the test runner, and the real `dart test` on `example/`, on the package of `test/fixtures/hazards`, and on a package the test writes); they carry the tag `process`.
 
+`tool/quick_check.sh` is the check before a push, in a few minutes: the analyzer, the formatter, the tests without the tag `process` (seconds), and the package of `test/fixtures/hazards` mutant by mutant, where every mutant has to have the status with the default that `--one-by-one` gives it (the tag `hazards`). The other tests that start processes take most of the time of `dart test`. CI runs everything on both SDKs: the tests that start no process and the gates in one job, the hazards in another, and the other tests in three parts beside them.
+
 ### The gates of this package
 
 The pure files are listed in [`test-gates.json`](test-gates.json) as gates of [`test_gates`](https://pub.dev/packages/test_gates), with what each decides and what a mistake in it costs. What is not listed is in `candidates`, with the reason.
