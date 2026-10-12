@@ -216,9 +216,13 @@ List<String> compileCommand(List<String> dart, String driver, String program) =>
     ];
 
 /// The command that runs the compiled driver [program] on the mutant [id]
-/// ([noMutant] for none), in a process of its own.
+/// ([noMutant] for none), in a process of its own. With assertions, as
+/// [compileCommand] compiled it: an SDK that does not take that from the
+/// snapshot (3.11) refuses to start a snapshot that was compiled otherwise
+/// than it is started.
 List<String> driverCommand(List<String> dart, String program, int id) => [
   ...dart,
+  '--enable-asserts',
   program,
   '$id',
 ];

@@ -336,10 +336,16 @@ void main() {
     expect(driverCommand(['fvm', 'dart'], '/s/d_0.jit', 12), [
       'fvm',
       'dart',
+      '--enable-asserts',
       '/s/d_0.jit',
       '12',
     ]);
-    expect(driverCommand(['dart'], 'd.jit', -1), ['dart', 'd.jit', '-1']);
+    expect(driverCommand(['dart'], 'd.jit', -1), [
+      'dart',
+      '--enable-asserts',
+      'd.jit',
+      '-1',
+    ]);
   });
 
   group('testLibraryOf', () {
