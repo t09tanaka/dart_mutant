@@ -935,6 +935,93 @@ void main() {
       expect(log.result.again, [4]);
     });
 
+    test('a test file of a position was never started, in any position: '
+        'the tests did not pass without a mutant', () {
+      final log = DriverLog(const [-1, 4, -1], tests: 2);
+      for (final position in [0, 1, 2]) {
+        log
+          ..output(loading(position, failed: position == 2 ? 1 : 0))
+          ..record('load $position 0 1000')
+          ..record('declared $position 0 1000')
+          ..record('${position == 1 ? 'fail' : 'pass'} $position 0 0 1000');
+      }
+      log.output(summary(1));
+      expect(log.result.failure, notPassing);
+    });
+
+    test('a test failed without a mutant beside the ones that passed, and '
+        'both sides say so', () {
+      final log = DriverLog(const [-1, 4, -1], tests: 1);
+      for (final position in [0, 1, 2]) {
+        log
+          ..output(loading(position))
+          ..record('load $position 0 1000')
+          ..record('declared $position 0 1000')
+          ..record('pass $position 0 0 1000');
+      }
+      // The same test again, which fails this time: as many tests ran.
+      log
+        ..record('fail 2 0 0 1000')
+        ..output(summary(1));
+      expect(log.result.failure, notPassing);
+    });
+
+    test('the test runner did not say that it started on a position, and '
+        'did for the one after it: the test run ended there', () {
+      for (final missing in [0, 1]) {
+        final log = DriverLog(plan, tests: 1);
+        for (var position = 0; position <= 5; position++) {
+          if (position != missing) {
+            log.output(loading(position));
+          }
+          log
+            ..record('load $position 0 1000')
+            ..record('declared $position 0 1000')
+            ..record('pass $position 0 0 1000');
+        }
+        log.output(summary(0));
+        // Both are about the tests without a mutant: of the first position
+        // the start is not known, of the second the end of the first.
+        expect(log.result.failure, notEndedWithoutMutant, reason: '$missing');
+      }
+    });
+
+    test('a line of the test runner about a test whose name ends like a '
+        'driver is no line about that driver', () {
+      final log = DriverLog(plan, tests: 1)
+        ..output(
+          '00:01 +7 -9: test/${driverNameOf(0, 0)}: reads '
+          'test/${driverNameOf(1, 0)}',
+        );
+      final full = ran(5, failing: {1});
+      for (var position = 0; position <= 5; position++) {
+        log
+          ..output(loading(position, failed: position > 1 ? 1 : 0))
+          ..record('load $position 0 ${1000 + position * 100}')
+          ..record('declared $position 0 1000')
+          ..record('${position == 1 ? 'fail' : 'pass'} $position 0 0 1000');
+      }
+      log.output(summary(1));
+      expect(log.result.killed.keys, full.result.killed.keys);
+      expect(log.result.killed.keys, [4]);
+    });
+
+    test('drivers at the top of the package', () {
+      final log = DriverLog(const [-1, 4, -1], tests: 1);
+      for (final position in [0, 1, 2]) {
+        log
+          ..output(
+            '00:01 +3${position == 2 ? ' -1' : ''}: '
+            'loading ${driverNameOf(position, 0)}',
+          )
+          ..record('load $position 0 1000')
+          ..record('declared $position 0 1000')
+          ..record('${position == 1 ? 'fail' : 'pass'} $position 0 0 1000');
+      }
+      log.output(summary(1));
+      expect(log.result.killed.keys, [4]);
+    });
+
     test('a line of the test runner about a test file that is no driver of '
         'the plan, or a second one about a position, changes nothing', () {
       final log = ran(5, failing: {1})

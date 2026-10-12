@@ -330,6 +330,10 @@ const noVerdict =
     'the test runner did not say how the tests ended, or its exit code '
     'says something else';
 
+/// What the test runner says of a test file it starts on, in front of its
+/// path.
+const _loading = 'loading ';
+
 /// A line of the test runner about a test: the time, how many tests have
 /// passed, been skipped and failed so far, and then what it is about.
 final _progress = RegExp(r'^\d+:\d+ \+\d+(?: ~\d+)?(?: -(\d+))?: (.*)$');
@@ -357,8 +361,8 @@ class DriverLog {
   /// was (milliseconds since the epoch, as the driver wrote it).
   final started = <int, int>{};
 
+  /// The test files of each position that declared their tests.
   final _declared = <int, Set<int>>{};
-  final _loaded = <int, Set<int>>{};
 
   /// How the last run of each test went: `pass`, `fail` or `skip`, by
   /// position, test file and number of the test.
@@ -390,9 +394,6 @@ class DriverLog {
   void record(String line) {
     final words = line.split(' ');
     final numbers = [for (final word in words.skip(1)) int.tryParse(word)];
-    if (numbers.contains(null)) {
-      return;
-    }
     switch ((words.first, numbers)) {
       case (
             'load' || 'declared',
@@ -405,7 +406,6 @@ class DriverLog {
         time = at;
         if (words.first == 'load') {
           started.putIfAbsent(position, () => at);
-          _loaded.putIfAbsent(position, () => {}).add(file);
         } else {
           _declared.putIfAbsent(position, () => {}).add(file);
         }
@@ -432,9 +432,9 @@ class DriverLog {
     final about = match.group(2)!;
     if (about == 'Some tests failed.' || about == 'All tests passed!') {
       failedAtEnd = failed;
-    } else if (about.startsWith('loading ')) {
-      final position = positionOf(about.substring('loading '.length));
-      if (position != null && position < plan.length) {
+    } else if (about.startsWith(_loading)) {
+      final position = positionOf(about.replaceFirst(_loading, ''));
+      if (position != null) {
         _failedBefore.putIfAbsent(position, () => failed);
       }
     }
@@ -457,16 +457,14 @@ class DriverLog {
   ];
 
   /// How many tests of [position] failed as its drivers wrote it down: the
-  /// tests that failed, the ones that were not run because one had failed,
-  /// and a test file that could not declare its tests, which the test
-  /// runner counts as one.
+  /// tests that failed, and the ones that were not run because one had
+  /// failed. (A test file that could not declare its tests is one more for
+  /// the test runner; such a position does not count anyway.)
   int _failedByDrivers(int position) =>
-      _outcomesOf(position).where((outcome) => outcome != 'pass').length +
-      (_loaded[position]?.length ?? 0) -
-      (_declared[position]?.length ?? 0);
+      _outcomesOf(position).where((outcome) => outcome != 'pass').length;
 
-  int _passed(int position) =>
-      _outcomesOf(position).where((outcome) => outcome == 'pass').length;
+  /// How many tests of [position] were run, or left out.
+  int _ran(int position) => _outcomesOf(position).length;
 
   /// How long [position] took, in milliseconds: from the start of its
   /// first driver to the start of the next position that has one, or to
@@ -524,8 +522,8 @@ class DriverLog {
   /// one more on the side of the test runner.
   ///
   /// - The tests without a mutant passed when every driver declared its
-  ///   tests, as many tests passed as the first time, and no test failed
-  ///   on either side. Anything else, and nothing of the test run is used.
+  ///   tests, as many tests ran as the first time, and no test failed on
+  ///   either side. Anything else, and nothing of the test run is used.
   /// - A mutant is killed when a driver wrote down that a test failed on
   ///   it, the two sides agree, and the tests without a mutant passed
   ///   afterwards.
@@ -565,8 +563,8 @@ class DriverLog {
       } else if (!declared ||
           failed != 0 ||
           !agreed ||
-          _passed(0) == 0 ||
-          _passed(position) != _passed(0)) {
+          _ran(0) == 0 ||
+          _ran(position) != _ran(0)) {
         return const DriverResult(
           failure:
               'the tests do not pass without a mutant when the mutants are '

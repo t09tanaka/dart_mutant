@@ -572,13 +572,17 @@ The page is shown by the `mutation-test-report-app` element of [`mutation-testin
 
 [`test_gates`](https://pub.dev/packages/test_gates) keeps the list and gives the verdict: `test-gates.json` names the files that must not be wrong, and says which surviving mutants are allowed, each with a reason. `dart_mutant` runs the mutants: it is given files and their tests, and knows no list and no allowance. **The two are used together; neither replaces the other.**
 
-What connects them today is the report. `test_gates` 0.1.x has a mutation test of its own (`test_gates mutation`: the twelve syntax mutators, in place, one mutant at a time) and does not start `dart_mutant`. Its `test_gates mutation-result --report <path>` judges any report in the schema this tool writes, so the mutants can be run here and judged there:
+`test_gates` 0.2.0 and later starts this tool itself. `test_gates mutation` writes the gates and their tests into a [plan file](#which-files-and-which-tests), starts `dart_mutant run --dir <package> --plan <the plan> --report <the report>` (with `--force` when it is given it, `--only <path>` for every `--gate <path>`, and what follows its `--` handed on as it is, for example `-- --jobs 3` or `-- --shard 1/4`), and judges the report: which survivors the gates allow, and that no gate is missing. `test_gates all` runs its `check`, `test`, `timezones` and `mutation` in one start. This tool is installed once per machine for that (`dart pub global activate dart_mutant`), not added to the package.
 
-1. write the gates and their tests into a [plan file](#which-files-and-which-tests),
-2. `dart_mutant run --plan <plan.json> --report <path>` (exit code 1 with a report means that a mutant survived, or that a file could not be mutation tested; which survivors are allowed, and that no gate is missing from the report, is the next step),
+Each version of `test_gates` names the versions of this tool it works with, asks for the version before every run (`dart_mutant --version`), and refuses any other with exit code 2: another version may make other mutants of the same source, and then the allowances no longer mean what they meant. `test_gates` 0.2.0 works with `dart_mutant` 0.1.1 and every later 0.1.x; its README says which version goes with which.
+
+What connects the two is the report, and the exit code of this tool is not the verdict (it is 1 for a survivor that a gate allows). `test_gates mutation-result --report <path>` judges any report in the schema this tool writes without running anything, so the mutants can also be run here by hand and judged there:
+
+1. write the gates and their tests into a plan file,
+2. `dart_mutant run --plan <plan.json> --report <path>`, or for a run in parts `dart_mutant merge` (exit code 1 with a report means that a mutant survived, or that a file could not be mutation tested; which survivors are allowed, and that no gate is missing from the report, is the next step),
 3. `test_gates mutation-result --report <path>`.
 
-[This package does that for its own gates](#the-gates-of-this-package), with a script. That `test_gates` starts `dart_mutant` by itself is meant for a later version of it; no published version does.
+[This package does that for its own gates](#the-gates-of-this-package), with a script. (`test_gates` 0.1.x had a mutation test of its own, the twelve syntax mutators in place and one mutant at a time, and did not start this tool.)
 
 ## Limitations
 
