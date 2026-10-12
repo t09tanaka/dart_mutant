@@ -1,4 +1,4 @@
-@Tags(['process'])
+@Tags(['process', 'hazards'])
 @Timeout(Duration(minutes: 15))
 library;
 
@@ -77,8 +77,8 @@ void main() {
   late _Run together;
 
   /// How many test runs each of the two runs starts at a time: 2, or what
-  /// `HAZARDS_JOBS` says (tool/quick_check.sh, for a machine with cores to
-  /// spare).
+  /// `HAZARDS_JOBS` says (tool/quick_check.sh and CI, where there are cores
+  /// to spare).
   final jobs = Platform.environment['HAZARDS_JOBS'] ?? '2';
 
   const files = [

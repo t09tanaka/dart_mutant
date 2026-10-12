@@ -13,12 +13,13 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Dart ${{ matrix.sdk }}
+  # What says soonest that something is wrong: the analyzer, the formatter,
+  # the tests that start no process, and the gates. With the job below it is
+  # what tool/quick_check.sh runs, and the gates.
+  quick:
+    name: Quick, Dart ${{ matrix.sdk }}
     runs-on: ubuntu-latest
-    # The tests that start the real test runner (test/commands) take most of
-    # it: about twelve minutes on a hosted runner.
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -34,7 +35,7 @@ jobs:
       - if: matrix.sdk == 'stable'
         run: dart format --output=none --set-exit-if-changed .
       - run: dart analyze --fatal-infos
-      - run: dart test
+      - run: dart test --exclude-tags process
       # The gates of this package (test-gates.json). Which lines carry a
       # branch entry is decided by the SDK, so these run on both.
       - run: dart run test_gates check
@@ -42,3 +43,45 @@ jobs:
       - run: dart run test_gates selfcheck
       - if: matrix.sdk == 'stable'
         run: dart pub publish --dry-run
+
+  # The hazards mutant by mutant (the tag `hazards`): the longest single
+  # test file, so it has a job of its own beside the others.
+  hazards:
+    name: Hazards, Dart ${{ matrix.sdk }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [3.11.0, stable]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ matrix.sdk }}
+      - run: dart pub get
+      # As many test runs at a time as the runner has processors.
+      - run: HAZARDS_JOBS="$(nproc)" dart test --tags hazards
+
+  # The other tests that start processes (the tag `process` without
+  # `hazards`): most of the time of `dart test`, so they are divided into
+  # parts that run beside each other. The test runner divides them, so a new
+  # test file is in one of the parts without being named here.
+  processes:
+    name: Processes ${{ matrix.part }}/3, Dart ${{ matrix.sdk }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [3.11.0, stable]
+        part: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ matrix.sdk }}
+      - run: dart pub get
+      - run: >-
+          dart test --tags process --exclude-tags hazards
+          --total-shards 3 --shard-index $((${{ matrix.part }} - 1))
