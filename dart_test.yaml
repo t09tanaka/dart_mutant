@@ -4,3 +4,8 @@ tags:
   # coverage of the gates is measured (test-gates.json), which has to come
   # from the tests of the gates themselves.
   process:
+  # The one of them that compares the two ways of running a mutant on the
+  # package of test/fixtures/hazards, mutant by mutant
+  # (test/commands/hazards_test.dart). It is part of the quick check
+  # (tool/quick_check.sh), and CI runs it apart from the others.
+  hazards:
