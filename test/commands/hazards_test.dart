@@ -23,7 +23,15 @@ import 'package:test/test.dart';
 ///   the clearing code failed on what the round before had left, and was
 ///   reported as killed. It was withdrawn in 0.1.1 for that.
 /// - `background`: code that runs in another isolate, where no mutant is
-///   at work.
+///   at work. The file imports `dart:isolate`, and is not built in.
+/// - `codec`: a test that compares what the code under test says here and
+///   in another isolate, which a file starts that is neither the file
+///   under test nor its test. `shout`: the same with another process. A
+///   mutant that is written into the file is at work on both sides; one
+///   that is built in would be at work on one, and fail the test.
+/// - `cli`: a test that leaves the exit code of the process behind when it
+///   fails, and a later one that puts it back.
+/// - `gate`: a `setUpAll` that fails with a mutant.
 /// - `scales`: a top-level variable and a static field that are computed
 ///   once, and tests that are declared from the code under test, so that a
 ///   mutant changes how many there are.
@@ -48,7 +56,29 @@ void main() {
     'lease',
     'place',
     'pair',
+    'codec',
+    'shout',
+    'cli',
+    'gate',
   ];
+
+  /// The files whose mutants are not run with a start that they share, and
+  /// what the run says of each.
+  const givenUp = {
+    'background':
+        'dart_mutant run: lib/background.dart imports dart:isolate: an '
+        'isolate that it starts does not end with the test file of a '
+        'mutant, and no mutant is at work in it; each of its mutants gets '
+        'a start of the test runner of its own',
+    'codec':
+        'dart_mutant run: lib/codec.dart: code of the file ran in another '
+        'isolate or process than the tests, where no mutant is at work; '
+        'each of its mutants gets a start of the test runner of its own',
+    'shout':
+        'dart_mutant run: lib/shout.dart: code of the file ran in another '
+        'isolate or process than the tests, where no mutant is at work; '
+        'each of its mutants gets a start of the test runner of its own',
+  };
 
   /// The mutants of the package as `file line:column Mutator replacement`,
   /// each with its status, the exit code and what the run printed.
@@ -117,6 +147,8 @@ dev_dependencies:
   test: ^1.27.0
 ''');
     final targets = <Map<String, Object?>>[];
+    write('lib/elsewhere.dart', fixture('elsewhere'));
+    write('bin/shout.dart', fixture('shout_bin'));
     for (final name in files) {
       write('lib/$name.dart', fixture(name));
       final tests = name == 'pair'
@@ -175,29 +207,49 @@ dev_dependencies:
   });
 
   test('and that is what was measured: the mutants of every file were '
-      'built in, and none of the files was given up', () {
+      'built in and killed in the start they share, but for the files '
+      'whose code runs where no mutant is at work, which are given up and '
+      'say so', () {
     for (final name in files) {
-      expect(
-        together.lines,
-        contains(
-          matches(
-            '^  lib/$name\\.dart: [1-9]\\d* killed with the mutants built in',
-          ),
-        ),
-        reason: together.lines.join('\n'),
+      final killedTogether = matches(
+        '^  lib/$name\\.dart: [1-9]\\d* killed with the mutants built in',
       );
+      if (givenUp.containsKey(name)) {
+        expect(together.lines, contains(givenUp[name]));
+        expect(together.lines, isNot(contains(killedTogether)));
+      } else {
+        expect(
+          together.lines,
+          contains(killedTogether),
+          reason: together.lines.join('\n'),
+        );
+      }
     }
     expect(
       together.lines.where(
         (line) => line.contains('each of its mutants gets a start'),
       ),
-      isEmpty,
+      hasLength(givenUp.length),
     );
     // In the table that is computed once as well.
     expect(
       together.lines.where((line) => line.contains('lib/scales.dart')).join(),
       isNot(contains('runs once')),
     );
+  });
+
+  test('the mutants that only a start they share would kill survive: '
+      'both sides of the comparison are the mutant', () {
+    for (final mutant in [
+      'lib/codec.dart 1:33 NumberLiteral 4',
+      'lib/codec.dart 1:33 NumberLiteral 2',
+      'lib/shout.dart 1:35 MethodExpression toLowerCase',
+      // No test calls it.
+      'lib/cli.dart 14:16 NumberLiteral 8',
+    ]) {
+      expect(usual.statuses, containsPair(mutant, 'Survived'));
+      expect(together.statuses, containsPair(mutant, 'Survived'));
+    }
   });
 
   test('--schemata is still wrong usage, and nothing is run', () async {

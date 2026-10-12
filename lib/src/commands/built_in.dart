@@ -13,11 +13,14 @@ import '../schemata.dart';
 
 /// The mutants of a file, built into it.
 class BuiltIn {
-  BuiltIn(this.content, this.ids, this.left);
+  BuiltIn(this.content, this.ids, this.left, {required this.guardAt});
 
   /// The file with a choice for every mutant of [ids], and the variable
   /// that makes it.
   final String content;
+
+  /// Where the guard goes in [content], see [guarded].
+  final int guardAt;
 
   /// The mutants that are built in.
   final List<int> ids;
@@ -37,6 +40,12 @@ class BuiltIn {
     ].join(', ');
   }
 }
+
+/// Why nothing of the test runs of a file is used when its code ran in an
+/// isolate or a process that no test file of a mutant started.
+const ranElsewhere =
+    'code of the file ran in another isolate or process than the tests, '
+    'where no mutant is at work';
 
 /// Why a mutant with a place was not built in.
 const changesProgram =
@@ -105,8 +114,14 @@ Future<BuiltIn> buildIn(
     }
   }
 
+  // With the guard, as the tests are run on it.
+  final guardAt = guardOffsetOf(source);
   Future<bool> compiles(List<Wrap> some) async =>
-      await analysis.compileErrorOf(path, embed(source, some)) == null;
+      await analysis.compileErrorOf(
+        path,
+        guarded(embed(source, some), at: guardAt, marker: "''"),
+      ) ==
+      null;
 
   var together = wraps;
   if (!stopped() && !await compiles(wraps)) {
@@ -129,9 +144,12 @@ Future<BuiltIn> buildIn(
       }
     }
   }
-  return BuiltIn(embed(source, together), [
-    for (final wrap in together) wrap.id,
-  ], left);
+  return BuiltIn(
+    embed(source, together),
+    [for (final wrap in together) wrap.id],
+    left,
+    guardAt: guardAt,
+  );
 }
 
 /// What the test runs with the mutants of a file built in found out.
@@ -190,6 +208,7 @@ Future<BuiltInRun> runBuiltIn({
   required String path,
   required Uint8List original,
   required String content,
+  required int guardAt,
   required List<int> ids,
   required List<String> tests,
   required List<String> command,
@@ -226,7 +245,17 @@ Future<BuiltInRun> runBuiltIn({
           ..parent.createSync(recursive: true)
           ..writeAsBytesSync(bytes, flush: true);
       }
-      target.writeAsStringSync(content, flush: true);
+      // Left behind by code of the file that runs where no mutant is at
+      // work: in another isolate, or in another process.
+      final elsewhere = File(p.join(state.path, 'elsewhere'));
+      target.writeAsStringSync(
+        guarded(
+          content,
+          at: guardAt,
+          marker: dartString(elsewhere.absolute.path),
+        ),
+        flush: true,
+      );
       var rest = share;
       while (rest.isNotEmpty &&
           failure == null &&
@@ -319,6 +348,10 @@ Future<BuiltInRun> runBuiltIn({
         if (result.exitCode == null && !result.limited) {
           aborted ??=
               'cannot start "${command.join(' ')}" (${result.startError})';
+          return;
+        }
+        if (elsewhere.existsSync()) {
+          failure ??= ranElsewhere;
           return;
         }
         if (result.limited) {

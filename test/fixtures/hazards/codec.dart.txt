@@ -1,0 +1,3 @@
+int scale(int value) => value * 3;
+
+int offset(int value) => value + 3;

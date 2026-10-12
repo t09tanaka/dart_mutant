@@ -46,19 +46,97 @@ void main() {
       expect(fileObstacle('int a = ;'), isNull);
     });
 
-    test('a byte order mark, the name of the variable, a part', () {
+    test('a byte order mark, a name that is added to the file, a part, '
+        'dart:isolate', () {
       expect(fileObstacle('﻿int a = 1;\n'), 'starts with a byte order mark');
       expect(
         fileObstacle('int \$dartMutantActive = 1;\n'),
-        'has the name \$dartMutantActive in it',
+        'has a name that starts with \$dartMutant in it',
       );
       expect(
-        fileObstacle('int f() => g(1, \$dartMutantActive);'),
-        'has the name \$dartMutantActive in it',
+        fileObstacle('int f() => g(1, \$dartMutantIo);'),
+        'has a name that starts with \$dartMutant in it',
       );
+      // Not at its start.
+      expect(fileObstacle('int my\$dartMutant = 1;'), isNull);
       expect(
         fileObstacle("part of 'a.dart';\nint a = 1;\n"),
         'is a part of a library',
+      );
+      expect(
+        fileObstacle("import 'dart:isolate';\nint a = 1;\n"),
+        'imports dart:isolate: an isolate that it starts does not end with '
+        'the test file of a mutant, and no mutant is at work in it',
+      );
+      expect(
+        fileObstacle("import 'dart:io';\nimport 'dart:isolate' show Isolate;"),
+        startsIsolates,
+      );
+      expect(fileObstacle("import 'dart:io';\nexport 'dart:isolate';"), isNull);
+      expect(fileObstacle("import 'package:a/isolate.dart';"), isNull);
+    });
+  });
+
+  group('the guard', () {
+    test('names', () {
+      expect(namePrefix, r'$dartMutant');
+      expect(switchName, r'$dartMutantActive');
+      expect(guardImport, "import 'dart:io' as \$dartMutantIo; ");
+    });
+
+    test('guardDeclaration: the variable is first what a function answers '
+        'that leaves a file behind', () {
+      expect(guardDeclaration("'/s/elsewhere'"), r"""
+
+int $dartMutantActive = $dartMutantElsewhere();
+int $dartMutantElsewhere() {
+  $dartMutantIo.File('/s/elsewhere').writeAsStringSync('');
+  return -1;
+}
+""");
+    });
+
+    test('guardOffsetOf: behind the last library, import or export '
+        'directive', () {
+      const source =
+          "library a;\nimport 'b.dart';\nexport 'c.dart';\npart 'd.dart';\n"
+          'int a = 1;\n';
+      expect(guardOffsetOf(source), source.indexOf("\npart 'd.dart'"));
+      const imports = "import 'b.dart';\n\nint a = 1;\n";
+      expect(guardOffsetOf(imports), imports.indexOf('\n'));
+      const library = "library;\npart 'd.dart';\n";
+      expect(guardOffsetOf(library), library.indexOf('\n'));
+      const exported = "import 'b.dart';\nexport 'c.dart';\nint a = 1;";
+      expect(guardOffsetOf(exported), exported.indexOf('\nint a'));
+    });
+
+    test('guardOffsetOf: without one, in front of the first directive, or '
+        'of the first declaration, behind the comments at the top', () {
+      const part = "// @dart=3.0\npart 'd.dart';\nint a = 1;\n";
+      expect(guardOffsetOf(part), part.indexOf('part '));
+      const declaration = '// A comment.\n\nint a = 1;\nint b = 2;\n';
+      expect(guardOffsetOf(declaration), declaration.indexOf('int a'));
+      expect(guardOffsetOf('int a = 1;'), 0);
+      expect(guardOffsetOf(''), 0);
+      expect(guardOffsetOf('// Nothing.\n'), '// Nothing.\n'.length);
+    });
+
+    test('guarded: the import at its place, and the variable with the '
+        'guard at the end', () {
+      const source = "import 'b.dart';\nint f() => 1 + 2;\n";
+      final embedded = embed(source, [
+        const Wrap(3, 28, 33, '1 - 2', statement: false),
+      ]);
+      expect(
+        guarded(embedded, at: guardOffsetOf(source), marker: "'/m'"),
+        "import 'b.dart';import 'dart:io' as \$dartMutantIo; \n"
+        'int f() => (\$dartMutantActive == 3 ? (1 - 2) : (1 + 2));\n'
+        '${guardDeclaration("'/m'")}',
+      );
+      expect(
+        guarded(embed('int a = 1;', const []), at: 0, marker: "''"),
+        "import 'dart:io' as \$dartMutantIo; int a = 1;"
+        '${guardDeclaration("''")}',
       );
     });
   });

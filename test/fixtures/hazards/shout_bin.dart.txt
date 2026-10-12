@@ -1,0 +1,6 @@
+import 'package:hazard_fixture/shout.dart';
+
+void main(List<String> arguments) {
+  // ignore: avoid_print
+  print(shout(arguments.first));
+}

@@ -80,14 +80,18 @@ String dartString(String text) =>
 
 /// Why the tests in [test] (the source of a test file) cannot be run by the
 /// driver, or `null` when they can: the driver calls `main()` of the file
-/// inside a group of its own, once per mutant.
+/// from its own `main()`, with a mutant at work.
 ///
-/// - `main` has to be there, take no argument and not be `async`: a group
-///   cannot wait for it.
+/// - `main` has to be there, take no argument and not be `async`.
 /// - An annotation on the library (`@Timeout`, `@TestOn`, `@Retry`, `@Tags`,
 ///   `@Skip`) is for the test runner, which would not see it on the driver.
+/// - A test file that imports `dart:isolate` starts isolates of its own:
+///   they do not end with the driver, and no mutant is at work in them.
 String? driverObstacle(String test) {
   final unit = parseString(content: test, throwIfDiagnostics: false).unit;
+  if (importsIsolates(unit)) {
+    return startsIsolates;
+  }
   final annotated = [
     for (final directive in unit.directives)
       if (directive.metadata.isNotEmpty) directive,
@@ -189,9 +193,10 @@ String? testLibraryOf(String? packageConfig, {required bool flutter}) {
 /// before the first line of the tests and of the file under test runs, as
 /// in a process that has just started with that mutant in the file.
 ///
-/// - What a process shares between its isolates is the current directory.
-///   The first driver notes it in the file `cwd` in [state] (an absolute
-///   directory), and every driver starts in that directory.
+/// - A process shares its current directory and its exit code between its
+///   isolates. The first driver notes the directory in the file `cwd` in
+///   [state] (an absolute directory), and every driver starts in that
+///   directory and with the exit code 0.
 /// - A test is not run when the file `killed/<id>` is there: an earlier
 ///   test of that mutant failed, which is all there is to know about it.
 ///
@@ -222,6 +227,7 @@ void main() {
   } else {
     cwd.writeAsStringSync(Directory.current.path, flush: true);
   }
+  exitCode = 0;
   target.$switchName = $id;
 ${id == noMutant ? '' : """
   final killed = File('\$_state/killed/$id');

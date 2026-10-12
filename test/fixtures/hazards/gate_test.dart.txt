@@ -1,0 +1,13 @@
+import 'package:hazard_fixture/gate.dart';
+import 'package:test/test.dart';
+
+void main() {
+  // Fails before any test runs.
+  setUpAll(() {
+    if (level() != 1) {
+      throw StateError('closed');
+    }
+  });
+
+  test('twice', () => expect(twice(2), 4));
+}

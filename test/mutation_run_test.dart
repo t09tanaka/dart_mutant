@@ -311,6 +311,7 @@ void main() {
       source: source,
       tests: {'test/a_test.dart': 'test'},
       command: ['dart', 'test'],
+      sharedStart: true,
     );
     final entry = incrementalEntry(input, const [
       MutantResult(plus, killed, milliseconds: 5),
@@ -340,6 +341,7 @@ void main() {
         'toolVersion': packageVersion,
         'mutatorsVersion': 2,
         'command': ['dart', 'test'],
+        'sharedStart': true,
         'source': source,
         'tests': {'test/a_test.dart': 'test'},
       });
@@ -408,26 +410,38 @@ void main() {
           source: '$source ',
           tests: {'test/a_test.dart': 'test'},
           command: ['dart', 'test'],
+          sharedStart: true,
         ),
         const FileInput(
           source: source,
           tests: {'test/a_test.dart': 'test2'},
           command: ['dart', 'test'],
+          sharedStart: true,
         ),
         const FileInput(
           source: source,
           tests: {'lib/a_test.dart': 'test'},
           command: ['dart', 'test'],
+          sharedStart: true,
         ),
         const FileInput(
           source: source,
           tests: {'test/a_test.dart': 'test', 'lib/a_test.dart': ''},
           command: ['dart', 'test'],
+          sharedStart: true,
         ),
         const FileInput(
           source: source,
           tests: {'test/a_test.dart': 'test'},
           command: ['flutter', 'test'],
+          sharedStart: true,
+        ),
+        // Measured the other way: with --one-by-one.
+        const FileInput(
+          source: source,
+          tests: {'test/a_test.dart': 'test'},
+          command: ['dart', 'test'],
+          sharedStart: false,
         ),
       ]) {
         expect(reused(entry, other), isNull);

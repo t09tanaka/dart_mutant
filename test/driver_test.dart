@@ -172,6 +172,26 @@ void main() {
       expect(driverObstacle('@pragma("x")\nvoid main() {}'), isNull);
     });
 
+    test('a test file that imports dart:isolate starts isolates of its '
+        'own', () {
+      expect(
+        driverObstacle("import 'dart:isolate';\nvoid main() {}"),
+        'imports dart:isolate: an isolate that it starts does not end with '
+        'the test file of a mutant, and no mutant is at work in it',
+      );
+      expect(
+        driverObstacle("import 'dart:isolate' as i;\nvoid main() {}"),
+        startsWith('imports dart:isolate'),
+      );
+      // An annotation comes first, as before.
+      expect(
+        driverObstacle("@Skip()\nimport 'dart:isolate';\nvoid main() {}"),
+        startsWith('imports dart:isolate'),
+      );
+      expect(driverObstacle("import 'dart:io';\nvoid main() {}"), isNull);
+      expect(driverObstacle("export 'dart:isolate';\nvoid main() {}"), isNull);
+    });
+
     test('no main, or something else with that name', () {
       expect(driverObstacle('void other() {}'), 'has no main()');
       expect(driverObstacle('int main = 1;'), 'has no main()');
@@ -372,6 +392,7 @@ void main() {
   } else {
     cwd.writeAsStringSync(Directory.current.path, flush: true);
   }
+  exitCode = 0;
   target.$dartMutantActive = 12;
   final killed = File('$_state/killed/12');
   setUp(() {
@@ -412,6 +433,7 @@ void main() {
   } else {
     cwd.writeAsStringSync(Directory.current.path, flush: true);
   }
+  exitCode = 0;
   target.$dartMutantActive = -1;
   tests.main();
 }

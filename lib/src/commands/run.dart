@@ -834,6 +834,7 @@ Future<int> _locked(
         source: source,
         tests: testTexts,
         command: command,
+        sharedStart: schemata,
       );
       final watch = Stopwatch()..start();
       final List<Mutant> mutants;
@@ -994,6 +995,7 @@ Future<int> _locked(
               path: path,
               original: original,
               content: built.content,
+              guardAt: built.guardAt,
               ids: built.ids,
               tests: target.tests,
               command: command,
