@@ -617,11 +617,11 @@ Measured on the same machine with `--force --jobs 3`, on a day on which it was v
 | Package                                          | Mutants | `--one-by-one` | Default        |
 | ------------------------------------------------ | ------- | -------------- | -------------- |
 | [`example/`](example/) of this package, one file | 22      | 16 to 18 s     | 17 to 20 s     |
-| The gates of this package, 16 files              | 2,888   | 46 min         | 26 min         |
+| 13 of the gates of this package                  | 2,001   | 35 min         | 19 min         |
 
-- **The statuses of every mutant were the same either way**, report against report: the same mutants, places and statuses, for all the mutants of the gates and the 22 of the example, in the one pair of runs that was made. So they are for the files of [`test/fixtures/hazards`](test/fixtures/hazards), which a test of this package requires in every run of the tests.
-- A file with quick tests whose mutants can nearly all be built in took a fifth to a third of the time (`merge.dart`: 34 s against 178 s for 264 mutants; `args.dart`: 56 s against 197 s for 245).
-- The two gates that take most of the time gained least (`typed_mutators.dart`: 11 min against 18 min): 179 of the 483 mutants of that file that compile are in `const` tables and cannot be built in, and its tests take seconds, which no shared start saves.
+- **The statuses of every mutant were the same either way**, report against report: the same mutants, places and statuses, for the 2,922 mutants of all 16 gates and the 22 of the example, in the one pair of runs that was made of each (the table has the 13 gates whose pair was made in one go; the other three, 921 mutants, were changed in between and compared afterwards). So they are for the files of [`test/fixtures/hazards`](test/fixtures/hazards), which a test of this package requires in every run of the tests.
+- A file with quick tests whose mutants can nearly all be built in took a fifth to a third of the time (`merge.dart`: 29 s against 178 s for 264 mutants; `args.dart`: 44 s against 197 s for 245).
+- The two gates that take most of the time gained least (`typed_mutators.dart`: 12 min against 18 min): 179 of the 483 mutants of that file that compile are in `const` tables and cannot be built in, and its tests take seconds, which no shared start saves.
 - A file with a handful of mutants gains nothing, or loses a few seconds: the tests without a mutant are run in the shared start and, when a mutant is left for a start of its own, the usual way as well. That is the example.
 - No file fell back as a whole, and no test run had to be ended.
 

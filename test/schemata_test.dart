@@ -116,6 +116,10 @@ int $dartMutantElsewhere() {
       expect(guardOffsetOf(part), part.indexOf('part '));
       const declaration = '// A comment.\n\nint a = 1;\nint b = 2;\n';
       expect(guardOffsetOf(declaration), declaration.indexOf('int a'));
+      const parts = "part 'd.dart';\npart 'e.dart';\nint a = 1;\n";
+      expect(guardOffsetOf(parts), 0);
+      // A file that cannot be parsed is asked as far as it goes.
+      expect(guardOffsetOf('// Broken.\nint a = ;'), '// Broken.\n'.length);
       expect(guardOffsetOf('int a = 1;'), 0);
       expect(guardOffsetOf(''), 0);
       expect(guardOffsetOf('// Nothing.\n'), '// Nothing.\n'.length);
