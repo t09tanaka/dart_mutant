@@ -173,4 +173,69 @@ void main() {
       }
     });
   });
+
+  group('shardAdvice', () {
+    test('a run within the goal, and a run that tested no mutant, say '
+        'nothing', () {
+      expect(waitGoal, const Duration(minutes: 5));
+      expect(
+        shardAdvice(took: const Duration(minutes: 5), mutants: 10),
+        isNull,
+      );
+      expect(
+        shardAdvice(took: const Duration(seconds: 1), mutants: 10),
+        isNull,
+      );
+      expect(shardAdvice(took: const Duration(hours: 1), mutants: 0), isNull);
+    });
+
+    test(
+      'a longer run: as many parts as it took times the goal, rounded up',
+      () {
+        expect(
+          shardAdvice(
+            took: const Duration(minutes: 5, milliseconds: 1),
+            mutants: 400,
+          ),
+          '5 min 0 s for the test runs of 400 mutant(s) (0.75 s each). To wait '
+          'about 5 minutes, divide the run into 2 parts that run at the same '
+          'time (--shard 1/2 to 2/2, then "merge")',
+        );
+        expect(
+          shardAdvice(took: const Duration(minutes: 10), mutants: 1),
+          startsWith(
+            '10 min 0 s for the test runs of 1 mutant(s) (600.00 s each)',
+          ),
+        );
+        expect(
+          shardAdvice(took: const Duration(minutes: 10), mutants: 1),
+          contains(
+            'into 2 parts that run at the same time (--shard 1/2 to 2/2,',
+          ),
+        );
+        expect(
+          shardAdvice(
+            took: const Duration(minutes: 14, seconds: 5),
+            mutants: 845,
+          ),
+          '14 min 5 s for the test runs of 845 mutant(s) (1.00 s each). To '
+          'wait about 5 minutes, divide the run into 3 parts that run at the '
+          'same time (--shard 1/3 to 3/3, then "merge")',
+        );
+      },
+    );
+
+    test('a part that took longer: that many times its own parts', () {
+      expect(
+        shardAdvice(
+          took: const Duration(minutes: 12),
+          mutants: 100,
+          shard: const Shard(2, 4),
+        ),
+        '12 min 0 s for the test runs of 100 mutant(s) of part 2/4 (7.20 s '
+        'each). To wait about 5 minutes, divide the run into 12 parts that '
+        'run at the same time (--shard 1/12 to 12/12, then "merge")',
+      );
+    });
+  });
 }

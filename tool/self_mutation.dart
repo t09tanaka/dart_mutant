@@ -49,8 +49,8 @@ const _more = {
 /// its number of mutants: the tests of these two open an analysis session,
 /// or run two implementations side by side.
 const _shards = {
-  'lib/src/typed_mutators.dart': 4,
-  'lib/src/syntax_mutators.dart': 2,
+  'lib/src/typed_mutators.dart': 7,
+  'lib/src/syntax_mutators.dart': 5,
 };
 
 /// A name for [gate] that can be part of the name of an artifact and of a

@@ -1,7 +1,7 @@
 import 'shard.dart';
 
-/// Whether the mutants of a file are built into the file and share one
-/// start of the test runner, each in a test file and an isolate of its own,
+/// Whether the mutants of a file are built into the file and its tests are
+/// compiled once with them, each mutant then run by a process of its own,
 /// when `--one-by-one` is not given.
 const schemataByDefault = true;
 
@@ -348,10 +348,11 @@ Options:
                    are in it as Pending.
   --one-by-one     One start of the test runner per mutant. Without it the
                    mutants of a file are built into the file where that can
-                   be done, and share one start: each is run by a test file
-                   of its own, in an isolate of its own. Only "killed" is
-                   taken from that; every other mutant gets a start of its
-                   own as well.
+                   be done, and its tests are compiled once with them: each
+                   mutant is then run by a process of its own, without a
+                   start of the test runner. Only "killed" is taken from
+                   that; every other mutant gets a start of the test runner
+                   of its own as well. Not for a Flutter package.
   --no-schemata    The same as --one-by-one: its name in 0.1.
   --schemata       Withdrawn in 0.1.1, and refused (exit code 2). In 0.1.0
                    it could report a mutant as killed that survives a run

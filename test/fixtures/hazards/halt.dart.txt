@@ -1,0 +1,10 @@
+import 'dart:io';
+
+/// Ends the process when it is not asked nicely.
+void leave(int code) {
+  if (code != 0) {
+    exit(code);
+  }
+}
+
+int twice(int value) => value * 2;

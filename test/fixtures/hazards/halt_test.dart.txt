@@ -1,0 +1,12 @@
+import 'package:hazard_fixture/halt.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('twice', () => expect(twice(2), 4));
+
+  // With a mutant the test runner itself is gone.
+  test('stays', () {
+    leave(0);
+    expect(twice(1), 2);
+  });
+}

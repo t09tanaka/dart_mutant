@@ -1,0 +1,12 @@
+import 'package:hazard_fixture/ledger.dart';
+import 'package:test/test.dart';
+
+void main() {
+  // In a process that has just started there is no file of it yet: the
+  // test passes with a clear() that does nothing. It leaves the file.
+  test('one entry', () {
+    clear();
+    enter('a');
+    expect(entries(), 1);
+  });
+}

@@ -47,6 +47,13 @@ const ranElsewhere =
     'code of the file ran in another isolate or process than the tests, '
     'where no mutant is at work';
 
+/// Why nothing of the drivers of a file is used when they do not compile:
+/// compiling a driver runs its tests once, without a mutant.
+const notCompiled =
+    'the tests cannot be compiled as a program of their own with the '
+    'mutants built in, or do not pass when they are run that way for the '
+    'first time';
+
 /// Why a mutant with a place was not built in.
 const changesProgram =
     'the program does not compile, or has other types, with a choice there';
@@ -152,7 +159,7 @@ Future<BuiltIn> buildIn(
   );
 }
 
-/// What the test runs with the mutants of a file built in found out.
+/// What the drivers of a file found out.
 class BuiltInRun {
   const BuiltInRun({
     this.killed = const {},
@@ -165,43 +172,39 @@ class BuiltInRun {
   /// The mutants that are `Killed`, with the milliseconds of their tests.
   final Map<int, int> killed;
 
-  /// Why nothing of these test runs is used: every mutant is run the usual
+  /// Why nothing of the drivers is used: every mutant is run the usual
   /// way.
   final String? failure;
 
   /// Why the whole run has to stop.
   final String? aborted;
 
-  /// How many test runs were ended because a mutant did not end within its
-  /// limit.
+  /// How many mutants did not end within their limit.
   final int unended;
 
-  /// How many test runs were ended because they held more memory than
-  /// their limit with a mutant at work.
+  /// How many mutants held more memory than their limit.
   final int heavy;
 }
 
 String _inPackage(String root, String relativePath) =>
     p.joinAll([root, ...relativePath.split('/')]);
 
-/// How often the time limit is looked at.
-const _tick = Duration(milliseconds: 200);
-
 /// Runs the tests of [path] on the mutants [ids] that are built into
-/// [content], in the working copies [copies]: in each, one start of the
-/// test runner runs a test file per mutant (a driver), one after the
-/// other, each in an isolate of its own, with the tests without a mutant
-/// first, in between and last.
+/// [content], in the working copies [copies]: in each, the tests of the
+/// file are compiled once with the mutants in them (a driver per test
+/// file), and that program is started once per mutant, **each time as a
+/// process of its own**, with the tests without a mutant first, in between
+/// and last.
 ///
-/// Only `Killed` is taken from such a test run, and only with the tests
-/// without a mutant passing before and after: see [DriverLog.result]. A
-/// test run whose current mutant does not end within its limit is ended,
-/// and another one is started for the mutants after it. So is one that
-/// holds more memory than its limit with a mutant at work
-/// ([DriverLog.memoryLimit]): that mutant is run the usual way, which
-/// measures it by itself.
+/// Only `Killed` is taken from the drivers, and only when the driver wrote
+/// down that a test failed, its process ended with another exit code than
+/// 0, and the tests without a mutant passed before and after: see
+/// [outcomeOf] and [DriverLog]. A mutant that does not end within its
+/// limit, or holds more memory than its limit, is ended and run the usual
+/// way, which measures it by itself.
 ///
-/// The copies are left as they were: the file as [original], no driver.
+/// The copies are left as they were: the file as [original], and nothing
+/// of the drivers.
 Future<BuiltInRun> runBuiltIn({
   required List<String> copies,
   required String root,
@@ -211,14 +214,13 @@ Future<BuiltInRun> runBuiltIn({
   required int guardAt,
   required List<int> ids,
   required List<String> tests,
-  required List<String> command,
+  required List<String> dart,
   required String testLibrary,
   required String? package,
   required Duration Function(Duration baseline) limitOf,
   required int Function(int baseline) memoryLimitOf,
   required SignalWatch signals,
 }) async {
-  final directory = directoryOf(tests.first);
   final killed = <int, int>{};
   String? failure;
   String? aborted;
@@ -226,18 +228,9 @@ Future<BuiltInRun> runBuiltIn({
   var heavy = 0;
 
   Future<void> worker(String copy, List<int> share) async {
-    final state = Directory(p.join(copy, '.dart_tool', 'dart_mutant_driver'));
+    // The drivers, their programs and what they write down.
+    final state = Directory(_inPackage(copy, driverDirectory));
     final target = File(_inPackage(copy, path));
-    final written = <File>[];
-    void removeDrivers() {
-      for (final file in written) {
-        if (file.existsSync()) {
-          file.deleteSync();
-        }
-      }
-      written.clear();
-    }
-
     try {
       for (final test in tests) {
         final bytes = File(_inPackage(root, test)).readAsBytesSync();
@@ -245,6 +238,10 @@ Future<BuiltInRun> runBuiltIn({
           ..parent.createSync(recursive: true)
           ..writeAsBytesSync(bytes, flush: true);
       }
+      if (state.existsSync()) {
+        state.deleteSync(recursive: true);
+      }
+      state.createSync(recursive: true);
       // Left behind by code of the file that runs where no mutant is at
       // work: in another isolate, or in another process.
       final elsewhere = File(p.join(state.path, 'elsewhere'));
@@ -256,120 +253,141 @@ Future<BuiltInRun> runBuiltIn({
         ),
         flush: true,
       );
-      var rest = share;
-      while (rest.isNotEmpty &&
-          failure == null &&
-          aborted == null &&
-          signals.signal == null) {
-        if (state.existsSync()) {
-          state.deleteSync(recursive: true);
-        }
-        Directory(p.join(state.path, 'killed')).createSync(recursive: true);
-        final plan = planOf(rest);
-        final drivers = <String>[];
-        for (final (position, id) in plan.indexed) {
-          for (final (index, test) in tests.indexed) {
-            final driver = driverPathOf(tests, position, index);
-            drivers.add(driver);
-            written.add(
-              File(_inPackage(copy, driver))..writeAsStringSync(
-                driverSource(
-                  testLibrary: testLibrary,
-                  target: importOf(
-                    path,
-                    directory: directory,
-                    package: package,
-                  ),
-                  test: importOf(test, directory: directory),
-                  id: id,
-                  state: state.absolute.path,
-                ),
-                flush: true,
-              ),
-            );
-          }
-        }
-        final log = DriverLog(plan);
-
-        // The time limit: of the position that is at work, since it is.
-        final stop = Completer<void>();
-        final watch = Stopwatch()..start();
-        int? at;
-        // The memory limit: of every position but the first, from what
-        // the first one held.
-        late final MemoryWatch memory;
-        memory = MemoryWatch(
-          limit: () => log.memoryLimit(memory.peak, memoryLimitOf),
+      // The tests with the mutants in them, compiled once.
+      final programs = <String>[];
+      for (final (index, test) in tests.indexed) {
+        File(_inPackage(copy, driverPathOf(index))).writeAsStringSync(
+          driverSource(
+            testLibrary: testLibrary,
+            target: importOf(
+              path,
+              directory: driverDirectory,
+              package: package,
+            ),
+            test: importOf(test, directory: driverDirectory),
+            index: index,
+            state: state.absolute.path,
+          ),
+          flush: true,
         );
-        final timer = Timer.periodic(_tick, (_) {
-          final current = log.current;
-          if (current != at) {
-            at = current;
-            watch.reset();
-          }
-          final limit = log.limit(limitOf, first: baselineLimit);
-          // Also when another test run of the file has found that nothing
-          // of them will be used.
-          if ((watch.elapsed > limit || failure != null || aborted != null) &&
-              !stop.isCompleted) {
-            stop.complete();
-          }
-        });
-        // A line that comes after the test run was given up belongs to no
-        // test run: it must not reach the files of the next one.
-        var running = true;
-        final CommandResult result;
-        try {
-          result = await runCommand(
-            driverCommand(command, drivers),
+        final program = p.join(state.absolute.path, 'driver_$index.jit');
+        final compiled = await runCommand(
+          compileCommand(dart, driverPathOf(index), program),
+          workingDirectory: copy,
+          capture: true,
+          signals: signals,
+          timeout: baselineLimit,
+        );
+        if (compiled.signal != null || signals.signal != null) {
+          return;
+        }
+        if (compiled.exitCode == null && !compiled.limited) {
+          aborted ??=
+              'cannot start "${dart.join(' ')}" (${compiled.startError})';
+          return;
+        }
+        if (compiled.exitCode != 0) {
+          failure ??= notCompiled;
+          return;
+        }
+        programs.add(program);
+      }
+
+      final notes = File(p.join(state.path, 'log'));
+      final log = DriverLog(planOf(share), tests: tests.length);
+      // The limits of a mutant: from what the tests took and held without
+      // one, the first time.
+      Duration? limit;
+      var memoryLimit = 0;
+      for (
+        var position = log.next;
+        position != null &&
+            failure == null &&
+            aborted == null &&
+            signals.signal == null;
+        position = log.next
+      ) {
+        final id = log.plan[position];
+        if (notes.existsSync()) {
+          notes.deleteSync();
+        }
+        final watch = Stopwatch()..start();
+        final exitCodes = <int>[];
+        var ended = false;
+        var readAsUncompiled = false;
+        var held = 0;
+        for (final program in programs) {
+          final memory = MemoryWatch(
+            limit: limit == null ? null : () => memoryLimit,
+          );
+          final result = await runCommand(
+            driverCommand(dart, program, id),
             workingDirectory: copy,
             capture: true,
             signals: signals,
-            onLine: (line) {
-              final id = running ? log.add(line) : null;
-              if (id != null) {
-                File(p.join(state.path, 'killed', '$id')).createSync();
-              }
-            },
-            stop: stop.future,
+            timeout: limit ?? baselineLimit,
             memory: memory,
           );
-        } finally {
-          running = false;
-          timer.cancel();
-        }
-        removeDrivers();
-        if (result.signal != null ||
-            signals.signal != null ||
-            failure != null ||
-            aborted != null) {
-          return;
-        }
-        if (result.exitCode == null && !result.limited) {
-          aborted ??=
-              'cannot start "${command.join(' ')}" (${result.startError})';
-          return;
+          if (result.signal != null || signals.signal != null) {
+            return;
+          }
+          if (result.exitCode == null && !result.limited) {
+            aborted ??=
+                'cannot start "${dart.join(' ')}" (${result.startError})';
+            return;
+          }
+          if (memory.peak > held) {
+            held = memory.peak;
+          }
+          if (result.limited) {
+            ended = true;
+            if (id != noMutant) {
+              result.overMemory ? heavy++ : unended++;
+            }
+            break;
+          }
+          exitCodes.add(result.exitCode!);
+          // What a start of the test runner would be taken for with this
+          // output: the same question, of the same text.
+          readAsUncompiled |=
+              classifyRun(
+                exitCode: result.exitCode,
+                output: result.output,
+                timedOut: false,
+              ) ==
+              compileError;
+          // A mutant is done with the first test file that fails.
+          if (id != noMutant && result.exitCode != 0) {
+            break;
+          }
         }
         if (elsewhere.existsSync()) {
           failure ??= ranElsewhere;
           return;
         }
-        if (result.limited) {
-          log.ended();
-          result.overMemory ? heavy++ : unended++;
+        log.add(
+          Ran(
+            exitCodes: exitCodes,
+            notes: notes.existsSync() ? notes.readAsLinesSync() : const [],
+            ended: ended,
+            readAsUncompiled: readAsUncompiled,
+          ),
+          milliseconds: watch.elapsedMilliseconds,
+        );
+        if (limit == null) {
+          limit = limitOf(watch.elapsed);
+          memoryLimit = memoryLimitOf(held);
         }
-        final found = log.result;
-        if (found.failure != null) {
-          failure ??=
-              result.overMemory && found.failure == notEndedWithoutMutant
-              ? 'the test run used too much memory while the tests ran '
-                    'without a mutant'
-              : found.failure;
-          return;
-        }
-        killed.addAll(found.killed);
-        rest = found.rest;
       }
+      if (signals.signal != null || failure != null || aborted != null) {
+        return;
+      }
+      final found = log.result;
+      if (found.failure != null) {
+        failure ??= found.failure;
+        return;
+      }
+      killed.addAll(found.killed);
     } on FileSystemException catch (error) {
       failure ??=
           'the mutants cannot be written into a working copy '
@@ -377,8 +395,10 @@ Future<BuiltInRun> runBuiltIn({
     } finally {
       // The copy is used again, for this file and for the next ones.
       try {
-        removeDrivers();
         target.writeAsBytesSync(original, flush: true);
+        if (state.existsSync()) {
+          state.deleteSync(recursive: true);
+        }
       } on FileSystemException catch (error) {
         aborted ??=
             '$path: cannot take the mutants out of a working copy '

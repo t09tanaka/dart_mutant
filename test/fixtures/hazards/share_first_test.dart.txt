@@ -1,0 +1,10 @@
+import 'dart:io';
+
+import 'package:test/test.dart';
+
+void main() {
+  // The current directory belongs to the process, and so to every test
+  // file that one start of the test runner runs.
+  setUpAll(() => Directory.current = 'test');
+  test('moves', () => expect(Directory.current.path, endsWith('test')));
+}

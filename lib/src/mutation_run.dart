@@ -29,6 +29,14 @@ const perTestTimeoutSeconds = 10;
 Duration processLimit(Duration baseline) =>
     baseline * 3 + const Duration(seconds: 20);
 
+/// How long the tests of one mutant may take as a process of their own,
+/// from the tests compiled once: three times that process without a mutant,
+/// plus 5 seconds. A mutant that is ended there is not judged there: it gets
+/// a start of the test runner of its own, with [processLimit], so this limit
+/// only says how long to wait before that.
+Duration driverLimit(Duration baseline) =>
+    baseline * 3 + const Duration(seconds: 5);
+
 /// How long the run without a mutant may take.
 const baselineLimit = Duration(minutes: 10);
 
@@ -299,10 +307,10 @@ class FileInput {
   /// The test command, without the test files.
   final List<String> command;
 
-  /// Whether the mutants of the file could share a start of the test
-  /// runner. A result that was measured that way is not reused by a run
-  /// with `--one-by-one`, which is how such a result is checked; nor the
-  /// other way round.
+  /// Whether the mutants of the file could be built into it and run by
+  /// processes of their own. A result that was measured that way is not
+  /// reused by a run with `--one-by-one`, which is how such a result is
+  /// checked; nor the other way round.
   final bool sharedStart;
 
   JsonObject toJson() => {

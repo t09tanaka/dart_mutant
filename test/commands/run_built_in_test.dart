@@ -28,6 +28,39 @@ int sumTo(int n) {
 }
 ''';
 
+// The same loop in a file with enough mutants to be built in by default
+// (mutantsToBuildIn), for the run that is started as a process.
+const longSum = '''
+int sumTo(int n) {
+  var total = 0;
+  for (var i = 0; i < n; i++) {
+    total += i;
+  }
+  return total;
+}
+
+int mix(int a, int b, int c) {
+  final first = a * 2 + b * 3 - c * 4;
+  final second = (a - b) * (b + c) - (c - a) * 5;
+  final third = a > b ? a + 6 : b - 7;
+  return first + second * 8 - third * 9;
+}
+''';
+
+const longSumTest = '''
+import 'package:built_in_fixture/long_sum.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('nothing below one but zero', () => expect(sumTo(1), 0));
+  test('the numbers below four', () => expect(sumTo(4), 6));
+  test('mix', () {
+    expect(mix(1, 2, 3), -79);
+    expect(mix(3, 2, 1), 31);
+  });
+}
+''';
+
 const sumTest = '''
 import 'package:built_in_fixture/sum.dart';
 import 'package:test/test.dart';
@@ -240,9 +273,32 @@ void main() {
 }
 ''';
 
-/// A run with the mutants of a file built in, each run by a test file of
-/// its own in one start of the test runner, against the real test runner,
-/// on a package in a temporary directory. That every mutant has the status
+const alone = 'int one() => 1;\n';
+
+/// Asked by the test, in a file of its own: the tool looks for the question
+/// in the file under test and in its test only.
+const aloneWho = '''
+import 'dart:isolate';
+
+bool asProgram() => Isolate.current.debugName == 'main';
+''';
+
+const aloneTest = '''
+import 'package:built_in_fixture/alone.dart';
+import 'package:built_in_fixture/alone_who.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('one, where the tests are the program', () {
+    expect(asProgram(), isTrue);
+    expect(one(), 1);
+  });
+}
+''';
+
+/// A run with the mutants of a file built in, its tests compiled once and
+/// each mutant run by a process of its own, with the real `dart`, on a
+/// package in a temporary directory. That every mutant has the status
 /// of a start of its own is the subject of test/commands/hazards_test.dart.
 void main() {
   late Directory dir;
@@ -271,6 +327,8 @@ dev_dependencies:
 ''');
     write('lib/sum.dart', sum);
     write('test/sum_test.dart', sumTest);
+    write('lib/long_sum.dart', longSum);
+    write('test/long_sum_test.dart', longSumTest);
     write('lib/hold.dart', hold);
     write('test/hold_test.dart', holdTest);
     write('lib/next.dart', next);
@@ -303,6 +361,9 @@ dev_dependencies:
         ],
       }),
     );
+    write('lib/alone.dart', alone);
+    write('lib/alone_who.dart', aloneWho);
+    write('test/alone_test.dart', aloneTest);
     write('lib/square.dart', square);
     write('test/square_test.dart', squareTest);
     // The packages are in the cache: this package depends on `test` too.
@@ -344,6 +405,9 @@ dev_dependencies:
     Shard? shard,
     String? reportPath,
     String? plan,
+    // However few mutants the file has: these tests are about the mutants
+    // that are built in.
+    int buildInFrom = 0,
   }) async {
     final before = tree();
     await runMutation(
@@ -361,6 +425,7 @@ dev_dependencies:
       Io(out: out.add, err: err.add),
       limitOf: limit ?? processLimit,
       memoryLimitOf: memory ?? memoryLimit,
+      buildInFrom: buildInFrom,
     );
     expect(tree(), before, reason: 'the package was changed');
     expect(Directory('${dir.path}/$stateDir/work').existsSync(), isFalse);
@@ -392,6 +457,41 @@ dev_dependencies:
     orElse: () => '',
   );
 
+  test('a file with fewer mutants to run than are built in is run with a '
+      'start of the test runner per mutant from the beginning, and says so; '
+      'with as many it is built in; the statuses are the same', () async {
+    final toRun = RegExp(
+      r'^  lib/either\.dart: (\d+) mutant\(s\) to run, fewer than (\d+): not '
+      r'built in, a start of the test runner for each$',
+    );
+    bool builtIn(String line) => line.contains('mutant(s) built in,');
+
+    final never = await mutate(
+      'lib/either.dart',
+      schemata: true,
+      buildInFrom: 1000,
+    );
+    final said = out.map(toRun.firstMatch).nonNulls.single;
+    final count = int.parse(said.group(1)!);
+    expect(said.group(2), '1000');
+    expect(out.where(builtIn), isEmpty);
+
+    out.clear();
+    final enough = await mutate(
+      'lib/either.dart',
+      schemata: true,
+      buildInFrom: count,
+    );
+    expect(out.where(toRun.hasMatch), isEmpty);
+    expect(out.where(builtIn), hasLength(1));
+
+    out.clear();
+    final oneByOne = await mutate('lib/either.dart', schemata: false);
+    expect(out.where(toRun.hasMatch), isEmpty);
+    expect(never, oneByOne);
+    expect(enough, oneByOne);
+  });
+
   test('a mutant that never ends does not hold the others: the test run is '
       'ended, the mutant is measured the usual way, and another one runs '
       'the rest', () async {
@@ -418,8 +518,8 @@ dev_dependencies:
       contains(
         matches(
           r'^  lib/sum\.dart: \d+ of \d+ mutant\(s\) built in, each run '
-          r'by a test file of its own, with ".* test --timeout 10s '
-          r'--concurrency 1 --reporter json"',
+          r'by a process of its own, with ".*dart <the tests, compiled '
+          r'once> <mutant>"',
         ),
       ),
     );
@@ -428,7 +528,7 @@ dev_dependencies:
       matches(
         r'^  lib/sum\.dart: \d+ killed with the mutants built in; \d+ not '
         r'killed that way get a start of their own; 1 of them did not '
-        r'end, and the test run was ended$',
+        r'end, and were ended$',
       ),
     );
     expect(err, [
@@ -476,8 +576,8 @@ dev_dependencies:
       builtInLine('lib/hold.dart'),
       matches(
         r'^  lib/hold\.dart: \d+ killed with the mutants built in; \d+ not '
-        r'killed that way get a start of their own; with 1 of them the '
-        r'test run used too much memory, and was ended$',
+        r'killed that way get a start of their own; 1 of them used too '
+        r'much memory, and were ended$',
       ),
     );
     expect(
@@ -679,27 +779,53 @@ dev_dependencies:
     );
   });
 
-  test('test files that only pass together in one isolate do not pass: '
-      'every test file has an isolate of its own, as the usual way gives '
-      'it, and the file is not tested either way', () async {
-    final builtIn = await mutate(
-      'lib/pair.dart',
-      schemata: true,
-      plan: '${dir.path}/pair.json',
-    );
-    // As with --one-by-one: the file is not in the report.
+  test(
+    'a file with two test files is not built in: the test runner runs '
+    'them in one process, and each of its mutants gets a start of its '
+    'own (here the tests only pass together, and fail that way too)',
+    () async {
+      final builtIn = await mutate(
+        'lib/pair.dart',
+        schemata: true,
+        plan: '${dir.path}/pair.json',
+      );
+      // As with --one-by-one: the file is not in the report.
+      expect(builtIn, isEmpty);
+      expect(builtInLine('lib/pair.dart'), isEmpty);
+      expect(
+        err,
+        containsAllInOrder([
+          'dart_mutant run: lib/pair.dart has more than one test file, which '
+              'share a process when the test runner runs them; each of its '
+              'mutants gets a start of the test runner of its own',
+          startsWith(
+            'dart_mutant run: lib/pair.dart has tests that fail in a ',
+          ),
+          'dart_mutant run: 1 file(s) could not be mutation tested',
+          startsWith('  - lib/pair.dart: the tests fail without a mutant'),
+        ]),
+      );
+    },
+  );
+
+  test('tests that pass as a program and not under the test runner: every '
+      'mutant is killed by its process, the tests are then run once the '
+      'usual way, and nothing of the processes is used', () async {
+    final builtIn = await mutate('lib/alone.dart', schemata: true);
     expect(builtIn, isEmpty);
-    expect(builtInLine('lib/pair.dart'), isEmpty);
+    expect(
+      builtInLine('lib/alone.dart'),
+      '  lib/alone.dart: 2 killed with the mutants built in',
+    );
     expect(
       err,
       containsAllInOrder([
-        'dart_mutant run: lib/pair.dart: the tests do not pass without a '
-            'mutant when the mutants are built in ("after the other file" '
-            'fails); each of its mutants gets a start of the test runner of '
-            'its own',
-        startsWith('dart_mutant run: lib/pair.dart has tests that fail in a '),
+        'dart_mutant run: lib/alone.dart: the tests do not pass with a start '
+            'of the test runner of their own in a working copy; nothing of '
+            'the mutants that were built in is used',
+        startsWith('dart_mutant run: lib/alone.dart has tests that fail in a '),
         'dart_mutant run: 1 file(s) could not be mutation tested',
-        startsWith('  - lib/pair.dart: the tests fail without a mutant'),
+        startsWith('  - lib/alone.dart: the tests fail without a mutant'),
       ]),
     );
   });
@@ -780,7 +906,7 @@ dev_dependencies:
         ...compiled.arguments,
         'run',
         '--force',
-        'lib/sum.dart',
+        'lib/long_sum.dart',
       ], workingDirectory: dir.path);
       final errors = process.stderr.transform(systemEncoding.decoder).join();
       final lines = StreamIterator(
@@ -796,7 +922,7 @@ dev_dependencies:
       // The driver is compiled and started, and gets to the mutant that
       // never ends.
       final driver = File(
-        '${dir.path}/$stateDir/work/1/test/dart_mutant_0_0_test.dart',
+        '${dir.path}/$stateDir/work/1/.dart_tool/dart_mutant_driver/driver_0.dart',
       );
       while (!driver.existsSync()) {
         await Future<void>.delayed(const Duration(milliseconds: 50));

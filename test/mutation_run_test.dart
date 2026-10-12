@@ -26,6 +26,15 @@ void main() {
     );
   });
 
+  test('driverLimit: three times the run without a mutant, plus 5 '
+      'seconds', () {
+    expect(driverLimit(Duration.zero), const Duration(seconds: 5));
+    expect(
+      driverLimit(const Duration(seconds: 7)),
+      const Duration(seconds: 26),
+    );
+  });
+
   test('usesFlutter: a dependency from the Flutter SDK', () {
     expect(
       usesFlutter('dependencies:\n  flutter:\n    sdk: flutter\n'),

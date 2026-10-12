@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
@@ -49,15 +48,6 @@ bool _sameBytes(List<int> a, List<int> b) {
 
 String _reason(FileSystemException error) =>
     error.osError?.message ?? error.message;
-
-/// True when a file next to [test] (relative to [root]) has a name that a
-/// driver could have.
-bool _hasDriverName(String root, String test) {
-  final directory = Directory(_inPackage(root, directoryOf(test)));
-  return directory.listSync().any(
-    (entity) => p.basename(entity.path).startsWith(driverPrefix),
-  );
-}
 
 /// The files of a run below [stateDir].
 class _State {
@@ -594,7 +584,9 @@ Future<({String? aborted, String? inPlace})> _runInCopies({
 /// time of the run without a mutant, and [memoryLimitOf] the memory it may
 /// hold, from what the run without a mutant held. They are parameters for
 /// the tests of this package only; the command line always uses
-/// [processLimit] and [memoryLimit].
+/// [processLimit] and [memoryLimit]. So is [buildInFrom], the number of
+/// mutants from which those of a file are built into it: the command line
+/// always uses [mutantsToBuildIn].
 ///
 /// Returns the exit code: 0 when no mutant survived, 1 when one did or a
 /// file could not be mutation tested, 130 / 143 / 129 when interrupted.
@@ -605,6 +597,7 @@ Future<int> runMutation(
   Io io, {
   Duration Function(Duration baseline) limitOf = processLimit,
   int Function(int baseline) memoryLimitOf = memoryLimit,
+  int buildInFrom = mutantsToBuildIn,
 }) async {
   if (!Directory(args.dir).existsSync()) {
     throw UsageError('--dir ${args.dir} is not a directory');
@@ -653,6 +646,7 @@ Future<int> runMutation(
       oldReport: oldReport,
       limitOf: limitOf,
       memoryLimitOf: memoryLimitOf,
+      buildInFrom: buildInFrom,
     );
   } finally {
     lock.release();
@@ -672,12 +666,16 @@ Future<int> _locked(
   required String? oldReport,
   required Duration Function(Duration baseline) limitOf,
   required int Function(int baseline) memoryLimitOf,
+  required int buildInFrom,
 }) async {
   // A report of an earlier run must not be read as the result of this one
   // if this one writes none. With --only that holds for the files of this
   // run; what the report says about the others is kept.
   // A part of a run (--shard) keeps nothing: it is put together with the
   // other parts of the same run, not with an earlier one.
+  // For what the run says about dividing it, at the end.
+  final whole = Stopwatch()..start();
+  var tested = 0;
   final shard = args.shard;
   final others = args.only.isEmpty || shard != null
       ? const <String, Object?>{}
@@ -720,12 +718,37 @@ Future<int> _locked(
   } on FileSystemException {
     // The obstacle below.
   }
-  // What declares `setUp` for the test file of a mutant. A package that
-  // has neither is run one by one, as with --one-by-one.
-  final testLibrary = testLibraryOf(packageConfig, flutter: flutter);
+  final command = testCommandFor(flutter: flutter, override: args.command);
+  final shown = command.join(' ');
+  // What it takes to run the tests of a file as a program of their own,
+  // once per built-in mutant: `package:test` and `package:test_api` in the
+  // package, and a test command of the form `dart test`. A package that
+  // lacks one of them (a Flutter package: its tests need `flutter test`)
+  // is run one by one, as with --one-by-one.
+  final testLibrary = testLibraryOf(packageConfig);
+  final dart = dartOf(command);
   // With the mutants built in, every test run is in a working copy, also
   // when they are run one at a time.
-  var schemata = (args.schemata ?? schemataByDefault) && testLibrary != null;
+  var schemata =
+      (args.schemata ?? schemataByDefault) &&
+      testLibrary != null &&
+      dart != null;
+  if (schemata) {
+    String? config;
+    try {
+      config = readText(_inPackage(root, 'dart_test.yaml'));
+    } on FileSystemException {
+      // None: nothing that only the test runner would read.
+    }
+    final obstacle = configObstacle(config);
+    if (obstacle != null) {
+      io.err(
+        '$executable run: the package $obstacle; each mutant gets a start '
+        'of the test runner of its own',
+      );
+      schemata = false;
+    }
+  }
   if (jobs > 1 || schemata) {
     final obstacle = copyObstacle(
       root: root,
@@ -748,8 +771,6 @@ Future<int> _locked(
       : null;
   // True once a file of the package was written by this run.
   var inPlace = false;
-  final command = testCommandFor(flutter: flutter, override: args.command);
-  final shown = command.join(' ');
   // With --force nothing of the last run is reused for the files of this
   // run; what it found for the others stays in the file.
   final carried = carriedResults(
@@ -844,6 +865,9 @@ Future<int> _locked(
       // can be done, or else why it is not done.
       BuiltIn? built;
       String? notBuilt;
+      // How many mutants there are to run, when that is too few to build
+      // them in.
+      int? few;
       final reusable = reusableResults(carried[path], input);
       if (reusable != null) {
         mutants = [for (final result in reusable) result.mutant];
@@ -886,24 +910,27 @@ Future<int> _locked(
           if (schemata &&
               compiling.isNotEmpty &&
               reasons.length == mutants.length) {
-            notBuilt =
-                fileObstacle(source) ??
-                testsObstacle(
-                  testTexts,
-                  taken: _hasDriverName(root, target.tests.first),
-                );
-            if (notBuilt == null) {
-              try {
-                built = await buildIn(
-                  analysis,
-                  path,
-                  source,
-                  mutants,
-                  compiling,
-                  stopped: () => signals.signal != null,
-                );
-              } on AnalysisUnavailable catch (error) {
-                notBuilt = 'cannot be analyzed that way (${error.message})';
+            if (!paysToBuildIn(compiling.length, from: buildInFrom)) {
+              // Before they are built in: that is part of what is saved.
+              few = compiling.length;
+            } else {
+              notBuilt =
+                  fileObstacle(source) ??
+                  targetObstacle(source) ??
+                  testsObstacle(testTexts);
+              if (notBuilt == null) {
+                try {
+                  built = await buildIn(
+                    analysis,
+                    path,
+                    source,
+                    mutants,
+                    compiling,
+                    stopped: () => signals.signal != null,
+                  );
+                } on AnalysisUnavailable catch (error) {
+                  notBuilt = 'cannot be analyzed that way (${error.message})';
+                }
               }
             }
           }
@@ -937,6 +964,7 @@ Future<int> _locked(
           if (statuses[index] == null) index,
       ];
       final reused = reusable == null ? 0 : own.length - pending.length;
+      tested += pending.length;
 
       var remaining = pending;
       var announced = false;
@@ -953,6 +981,12 @@ Future<int> _locked(
             'start of the test runner of its own',
           );
         }
+        if (instead == null && few != null) {
+          io.out(
+            '  $path: $few mutant(s) to run, fewer than $buildInFrom: not '
+            'built in, a start of the test runner for each',
+          );
+        }
         final refused = own
             .where((index) => statuses[index] == compileError)
             .length;
@@ -966,12 +1000,12 @@ Future<int> _locked(
           );
         }
         if (instead == null && built != null && built.ids.isNotEmpty) {
-          // One test run has to start, compile and run the tests without a
-          // mutant before its first mutant: more of them only pay when
-          // each has enough to do.
-          final drivers = min(
-            copies.jobs,
-            (built.ids.length / mutantsBetweenChecks).ceil(),
+          // In every working copy the tests are compiled and run without
+          // a mutant before the first mutant and after the last: more
+          // copies only pay when each has enough to do.
+          final drivers = driversFor(
+            mutants: built.ids.length,
+            jobs: copies.jobs,
           );
           List<String>? used;
           try {
@@ -982,8 +1016,8 @@ Future<int> _locked(
           if (used != null) {
             io.out(
               '  $path: ${built.ids.length} of ${mutants.length} mutant(s) '
-              'built in, each run by a test file of its own, with '
-              '"${driverCommand(command, const []).join(' ')}"'
+              'built in, each run by a process of its own, with '
+              '"${dart!.join(' ')} <the tests, compiled once> <mutant>"'
               '${drivers == 1 ? '' : ', $drivers at a time'}'
               '${said ? '' : ' ($refused do not compile)'}',
             );
@@ -998,10 +1032,16 @@ Future<int> _locked(
               guardAt: built.guardAt,
               ids: built.ids,
               tests: target.tests,
-              command: command,
+              dart: dart,
               testLibrary: testLibrary!,
               package: packageNameOf(pubspec),
-              limitOf: limitOf,
+              // Whichever is shorter: a mutant that is ended there gets a
+              // start of the test runner of its own anyway.
+              limitOf: (baseline) {
+                final usual = limitOf(baseline);
+                final short = driverLimit(baseline);
+                return short < usual ? short : usual;
+              },
               memoryLimitOf: memoryLimitOf,
               signals: signals,
             );
@@ -1033,10 +1073,9 @@ Future<int> _locked(
                 '${unsettled == 0 ? '' : '; $unsettled not killed that way '
                           'get a start of their own'}'
                 '${outcome.unended == 0 ? '' : '; ${outcome.unended} of '
-                          'them did not end, and the test run was ended'}'
-                '${outcome.heavy == 0 ? '' : '; with ${outcome.heavy} of '
-                          'them the test run used too much memory, and was '
-                          'ended'}',
+                          'them did not end, and were ended'}'
+                '${outcome.heavy == 0 ? '' : '; ${outcome.heavy} of them '
+                          'used too much memory, and were ended'}',
               );
             }
             var left = [
@@ -1068,7 +1107,7 @@ Future<int> _locked(
                 io.err(
                   '$executable run: $path: the tests do not pass with a start '
                   'of the test runner of their own in a working copy; nothing '
-                  'of the shared start is used',
+                  'of the mutants that were built in is used',
                 );
               }
             }
@@ -1363,6 +1402,15 @@ Future<int> _locked(
       '${failures.isEmpty ? '' : ' / ${failures.length} file(s) not tested'})';
   if (pageProblem != null) {
     io.err('$executable run: $pageProblem');
+  }
+  // Before the last line, which is the one other tools read.
+  final advice = shardAdvice(
+    took: whole.elapsed,
+    mutants: tested,
+    shard: shard,
+  );
+  if (advice != null) {
+    io.out('$executable run: $advice');
   }
   if (survivors.isEmpty && failures.isEmpty && pageProblem == null) {
     io.out('$executable run: OK $summary');
