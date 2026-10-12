@@ -49,8 +49,7 @@ void main() {
     expect(args.command, isEmpty);
   });
 
-  test('--schemata and --no-schemata', () {
-    expect(runArgs(['run', 'a.dart', '--schemata']).schemata, isTrue);
+  test('--no-schemata says what a run does anyway', () {
     expect(runArgs(['run', '--no-schemata', 'a.dart']).schemata, isFalse);
     // Not ours after --.
     expect(
@@ -286,9 +285,24 @@ void main() {
       '--force does not take a value',
     ),
     (
+      '--schemata, which was withdrawn',
+      ['run', 'a.dart', '--schemata'],
+      schemataWithdrawn,
+    ),
+    (
       '--schemata with a value',
       ['run', 'a.dart', '--schemata=1'],
-      '--schemata does not take a value',
+      schemataWithdrawn,
+    ),
+    (
+      '--schemata before the files',
+      ['run', '--schemata', 'a.dart'],
+      schemataWithdrawn,
+    ),
+    (
+      '--schemata for merge, which never had it',
+      ['merge', 'a.json', '--report', 'b.json', '--schemata'],
+      'unknown argument for merge: --schemata',
     ),
     (
       '--no-schemata with a value',
@@ -296,14 +310,14 @@ void main() {
       '--no-schemata does not take a value',
     ),
     (
-      '--schemata twice',
-      ['run', 'a.dart', '--schemata', '--schemata'],
-      '--schemata or --no-schemata is given twice',
+      '--no-schemata twice',
+      ['run', 'a.dart', '--no-schemata', '--no-schemata'],
+      '--no-schemata is given twice',
     ),
     (
-      '--schemata and --no-schemata',
+      '--schemata after --no-schemata',
       ['run', 'a.dart', '--no-schemata', '--schemata'],
-      '--schemata or --no-schemata is given twice',
+      schemataWithdrawn,
     ),
     ('a value that is missing', ['run', 'a.dart', '--report'], 'needs a value'),
     ('an empty value', ['run', 'a.dart', '--report='], 'needs a value'),
@@ -350,6 +364,17 @@ void main() {
     expect(help, contains('\n  -h, --help       Show this help\n'));
     expect(help, contains('\n  -v, --version    Show the version\n'));
     expect(help, contains('\nExit codes:\n  0    no mutant survived\n'));
+  });
+
+  test('the help says that --schemata was withdrawn, and --schemata is '
+      'answered with why', () {
+    expect(
+      help,
+      contains('\n  --schemata       Withdrawn in 0.1.1, and refused (exit'),
+    );
+    expect(schemataWithdrawn, startsWith('--schemata was withdrawn in 0.1.1'));
+    expect(schemataWithdrawn, contains('reported as killed'));
+    expect(schemataWithdrawn, endsWith('Run without it'));
   });
 
   test('the help names every option', () {

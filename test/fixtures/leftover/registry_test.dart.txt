@@ -1,0 +1,18 @@
+import 'package:leftover_fixture/registry.dart';
+import 'package:test/test.dart';
+
+void main() {
+  // In a process that has just started there is nothing to forget: the
+  // tests pass with a clearNames() that does nothing.
+  setUpAll(clearNames);
+
+  test('registers one', () {
+    register('a');
+    expect(registered, 1);
+  });
+
+  test('registers another', () {
+    register('b');
+    expect(registered, 2);
+  });
+}

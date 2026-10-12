@@ -240,9 +240,11 @@ void main() {
 }
 ''';
 
-/// `dart_mutant run --schemata` against the real test runner, on a package
-/// in a temporary directory. The statuses are those of a run without the
-/// option.
+/// A run with the mutants of a file built into one program (what
+/// `--schemata` asked for in 0.1.0) against the real test runner, on a
+/// package in a temporary directory. The command line refuses the option
+/// since 0.1.1, see test/commands/leftover_state_test.dart for why; the
+/// code is kept, and so are these tests of what it does.
 void main() {
   late Directory dir;
   late String slowLog;
@@ -773,7 +775,13 @@ dev_dependencies:
   group('interrupted', () {
     late CompiledCommandLine compiled;
 
-    setUpAll(() => compiled = CompiledCommandLine());
+    // The command line refuses --schemata: such a run is started by a
+    // program of the tests.
+    setUpAll(
+      () => compiled = CompiledCommandLine(
+        entry: 'test/support/built_in_main.dart',
+      ),
+    );
     tearDownAll(() => compiled.delete());
 
     test('SIGINT while a driver runs: the driver is ended, the package is '
@@ -781,9 +789,6 @@ dev_dependencies:
       final before = tree();
       final process = await Process.start(Platform.resolvedExecutable, [
         ...compiled.arguments,
-        'run',
-        '--force',
-        '--schemata',
         'lib/sum.dart',
       ], workingDirectory: dir.path);
       final errors = process.stderr.transform(systemEncoding.decoder).join();

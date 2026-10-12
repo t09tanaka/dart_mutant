@@ -108,7 +108,7 @@ void main() {
       expect(package.runs, hasLength(5));
       final json = report();
       expect(json['schemaVersion'], '2');
-      expect(json['framework'], {'name': 'dart_mutant', 'version': '0.1.0'});
+      expect(json['framework'], {'name': 'dart_mutant', 'version': '0.1.1'});
       final files = json['files']! as Map<String, Object?>;
       expect(files.keys, ['lib/a.dart', 'lib/b.dart']);
       expect((files['lib/a.dart']! as Map)['source'], sourceA);
@@ -490,6 +490,11 @@ void main() {
         'unknown argument for run: --fast',
       ),
       ('nothing to mutate', ['run'], 'nothing to mutate'),
+      (
+        '--schemata, which was withdrawn',
+        ['run', '--schemata', 'lib/a.dart'],
+        '--schemata was withdrawn in 0.1.1',
+      ),
       ('an option without its value', ['run', '--dir'], '--dir needs a'),
       ('-- without a command', ['run', 'lib/a.dart', '--'], '"--" must be'),
       (
@@ -552,7 +557,7 @@ void main() {
       package.out.clear();
       expect(await run(['--version'], package.io), 0);
       expect(await run(['-v'], package.io), 0);
-      expect(package.out, ['0.1.0', '0.1.0']);
+      expect(package.out, ['0.1.1', '0.1.1']);
     });
   });
 

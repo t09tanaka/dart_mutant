@@ -1,0 +1,12 @@
+final _names = <String>[];
+
+/// Forgets every name.
+void clearNames() {
+  _names.clear();
+}
+
+void register(String name) {
+  _names.add(name);
+}
+
+int get registered => _names.length;

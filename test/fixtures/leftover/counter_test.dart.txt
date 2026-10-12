@@ -1,0 +1,14 @@
+import 'package:leftover_fixture/counter.dart';
+import 'package:test/test.dart';
+
+void main() {
+  // The tests share one counter, and each relies on the one before it.
+  test('reset', () {
+    shared.reset();
+    expect(shared.value, 0);
+  });
+
+  test('first bump', () => expect(shared.bump(), 1));
+
+  test('second bump', () => expect(shared.bump(), 2));
+}
