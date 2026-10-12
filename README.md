@@ -89,7 +89,7 @@ The keys are `version` and `targets`, and in a target `file` and `tests`. It is 
 | ----------------- | ---------------------------------------------------------------------------------------------------- |
 | `--dir <package>` | The package to mutate. Default: `.`, the current directory                                           |
 | `--plan <file>`   | The plan file (a path as your shell sees it). Not together with files as arguments                   |
-| `--only <file>`   | Limit the run to this file of the plan or of the arguments. May be given more than once. A path that is not a file of the run is wrong usage. The report keeps what it says about the other files. It is what `--gate` is in `test_gates`; this tool knows no list of gates and is given files, hence `--only` |
+| `--only <file>`   | Limit the run to this file of the plan or of the arguments. May be given more than once. A path that is not a file of the run is wrong usage. The report keeps what it says about the other files, when this version of the tool wrote it. It is what `--gate` is in `test_gates`; this tool knows no list of gates and is given files, hence `--only` |
 | `--report <path>` | Where the report is written (a path as your shell sees it). Default: `reports/mutation/mutation.json` in the package. A file that is already there is only replaced when it is a report |
 | `--html <path>`   | Also write the report as a page for a browser (a path as your shell sees it, ending in `.html`), see [The report as a page](#the-report-as-a-page---html). A file that is already there is only replaced when it is such a page |
 | `--force`         | Run every mutant again, see [Results of the last run](#results-of-the-last-run-and---force)          |
@@ -276,7 +276,7 @@ The copies are inside `.dart_tool`, so the analyzer of your editor, `dart analyz
 
 ## `--schemata` was withdrawn
 
-**0.1.1 refuses `--schemata`**: exit code 2, and nothing is run. **Do not trust a `Killed` from a run of 0.1.0 with `--schemata`; run again without the option.** A run without it, which is the default in 0.1.0 as well, is not affected.
+**0.1.1 refuses `--schemata`**: exit code 2, and nothing is run. **Do not trust a `Killed` from a run of 0.1.0 with `--schemata`; run again without the option** (with 0.1.0 itself, also with `--force`: it reuses the results of its last run whichever way they were measured). A run that neither has the option nor reuses the results of one that had it is not affected; that is the default in 0.1.0 as well. 0.1.1 reuses nothing that 0.1.0 measured, and a run with `--only` keeps nothing of a report that 0.1.0 wrote.
 
 The option of 0.1.0 (experimental, not the default) built the mutants of a file into the file behind a variable and ran the tests on all of them in one process, once per mutant, to save a start of the test runner for each. Only `Killed` was taken from that process, and only while the tests passed without a mutant before and after.
 
@@ -314,7 +314,7 @@ void main() {
 }
 ```
 
-Take the mutant `{ _names.clear(); }` → `{}`. In a run of its own the process has just started, there is nothing to clear, and both tests pass: `Survived`, which is the result (no test says what `clearNames()` is for). With `--schemata` the tests of this mutant started with the names the rounds before had registered, the first test found more than its one, and the mutant was reported as `Killed`: the run ended with `OK` and exit code 0 where it ends with a survivor and exit code 1. The tests without a mutant cannot show this, because without a mutant the code that clears is at work.
+Take the mutant `{ _names.clear(); }` → `{}`. In a run of its own the process has just started, there is nothing to clear, and both tests pass: `Survived`, which is the result (no test says what `clearNames()` is for). With `--schemata` the tests of this mutant started with the names the rounds before had registered, the first test found more than its one, and the mutant was reported as `Killed`: a run on this file ended with `OK` and exit code 0 where it ends with a survivor and exit code 1. The tests without a mutant cannot show this, because without a mutant the code that clears is at work.
 
 It is the one mistake this tool must not make, so the option is gone rather than documented. The package above, and one with a counter that the first test resets, are [`test/fixtures/leftover`](test/fixtures/leftover); [`test/commands/leftover_state_test.dart`](test/commands/leftover_state_test.dart) holds what a run of its own for every mutant says about them, and what the withdrawn way said.
 

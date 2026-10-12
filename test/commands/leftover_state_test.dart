@@ -66,16 +66,17 @@ dev_dependencies:
 
   tearDownAll(() => dir.deleteSync(recursive: true));
 
-  /// The mutants of the two files as `file line:column Mutator replacement`,
+  /// The mutants of [targets] as `file line:column Mutator replacement`,
   /// each with its status, and the exit code of the run.
   Future<({Map<String, String> statuses, int exitCode})> mutate({
     required bool builtIn,
+    List<String> targets = const ['lib/registry.dart', 'lib/counter.dart'],
   }) async {
     final lines = <String>[];
     final exitCode = await runMutation(
       RunArgs(
         dir: dir.path,
-        targets: const ['lib/registry.dart', 'lib/counter.dart'],
+        targets: targets,
         force: true,
         jobs: 2,
         schemata: builtIn,
@@ -122,14 +123,11 @@ dev_dependencies:
     ];
   }
 
-  late Map<String, String> usual;
-
   test('a run of its own for every mutant: the mutants that empty the '
       'clearing code survive, and the run fails', () async {
     final run = await mutate(builtIn: false);
-    usual = run.statuses;
     expect(run.exitCode, 1);
-    expect(usual, {
+    expect(run.statuses, {
       'lib/registry.dart 4:19 BlockStatement {}': 'Survived',
       'lib/registry.dart 8:28 BlockStatement {}': 'Killed',
       'lib/counter.dart 4:16 BlockStatement {}': 'Survived',
@@ -145,18 +143,31 @@ dev_dependencies:
   test('the mutants built into one program, as --schemata of 0.1.0 ran '
       'them: the same mutants are reported as killed, which is why the '
       'option is refused', () async {
-    final run = await mutate(builtIn: true);
+    final usual = await mutate(builtIn: false);
+    final builtIn = await mutate(builtIn: true);
     // What has to be empty before such a way of running is offered again.
-    expect(differences(usual, run.statuses), [
+    expect(differences(usual.statuses, builtIn.statuses), [
       'lib/registry.dart 4:19 BlockStatement {}: Survived, Killed',
       'lib/counter.dart 4:16 BlockStatement {}: Survived, Killed',
     ]);
   });
 
+  test('on the registry alone that was a run without a survivor, and exit '
+      'code 0, where a run of its own for every mutant ends with 1', () async {
+    const registry = ['lib/registry.dart'];
+    final usual = await mutate(builtIn: false, targets: registry);
+    expect(usual.exitCode, 1);
+    expect(usual.statuses.values, ['Survived', 'Killed']);
+    final builtIn = await mutate(builtIn: true, targets: registry);
+    expect(builtIn.exitCode, 0);
+    expect(builtIn.statuses.values, ['Killed', 'Killed']);
+  });
+
   test('the command line does not get there: --schemata is wrong usage, and '
       'nothing is run', () async {
-    final report = File('${dir.path}/reports/mutation/mutation.json');
-    final before = report.readAsStringSync();
+    final report = File('${dir.path}/reports/mutation/mutation.json')
+      ..createSync(recursive: true)
+      ..writeAsStringSync('{"files": {}}');
     final err = <String>[];
     final out = <String>[];
     expect(
@@ -172,7 +183,8 @@ dev_dependencies:
     );
     expect(err.first, 'dart_mutant: $schemataWithdrawn\n');
     expect(out, isEmpty);
-    expect(report.readAsStringSync(), before);
+    // Not even the report of the last run is removed.
+    expect(report.readAsStringSync(), '{"files": {}}');
     expect(Directory('${dir.path}/$stateDir/work').existsSync(), isFalse);
   });
 }

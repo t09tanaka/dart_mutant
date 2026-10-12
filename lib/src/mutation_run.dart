@@ -210,6 +210,13 @@ JsonObject _json(({int line, int column}) position) => {
   'column': position.column,
 };
 
+/// Who wrote [report]: the tool and its version (`framework`), and the
+/// version of its mutators.
+JsonObject writerOf(JsonObject report) => {
+  'framework': report['framework'],
+  'mutatorsVersion': asObject(report['config'])?['mutatorsVersion'],
+};
+
 /// True when [text] is a report as [buildReport] writes it, or as another
 /// tool writes it in the same schema: a JSON object with `files`.
 bool isReport(String text) {
@@ -226,6 +233,11 @@ bool isReport(String text) {
 /// report, and nothing of a part of a run with `--shard`: its mutants of
 /// the other parts are not evaluated, and in the report of a whole run
 /// nothing would say so.
+///
+/// Nothing is kept either of a report that another tool wrote, or another
+/// version of this one or of its mutators: the report of this run says
+/// that this version wrote it, and that has to be true of every file in
+/// it. (What 0.1.0 measured with `--schemata` is not to be trusted.)
 JsonObject otherReportFiles(String? existing, List<String> selected) {
   if (existing == null) {
     return {};
@@ -236,10 +248,13 @@ JsonObject otherReportFiles(String? existing, List<String> selected) {
   } on FormatException {
     return {};
   }
-  if (partOf(decoded) != null) {
+  final report = asObject(decoded);
+  if (report == null ||
+      partOf(decoded) != null ||
+      !sameJson(writerOf(report), writerOf(buildReport(const {})))) {
     return {};
   }
-  final files = asObject(asObject(decoded)?['files']) ?? {};
+  final files = asObject(report['files']) ?? {};
   final left = selected.map(normalizePath).toSet();
   return {
     for (final MapEntry(key: path, :value) in files.entries)
