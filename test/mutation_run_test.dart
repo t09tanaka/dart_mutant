@@ -1,8 +1,11 @@
 import 'dart:convert';
 
+import 'package:dart_mutant/src/json.dart';
 import 'package:dart_mutant/src/mutant.dart';
 import 'package:dart_mutant/src/mutation_run.dart';
 import 'package:dart_mutant/src/shard.dart';
+import 'package:dart_mutant/src/typed_mutators.dart';
+import 'package:dart_mutant/src/version.dart';
 import 'package:test/test.dart';
 
 const source = 'int a(int x) =>\n    x + 1;\n';
@@ -122,7 +125,7 @@ void main() {
       expect(report, {
         'schemaVersion': '2',
         'thresholds': {'high': 100, 'low': 100},
-        'framework': {'name': 'dart_mutant', 'version': '0.1.0'},
+        'framework': {'name': 'dart_mutant', 'version': '0.1.1'},
         'config': {'mutatorsVersion': 2},
         'files': {
           'lib/a.dart': {
@@ -208,6 +211,7 @@ void main() {
   test('otherReportFiles: what is not of this run, whatever the spelling '
       'of the path', () {
     final existing = jsonEncode({
+      ...buildReport(const {}),
       'files': {
         './lib/a.dart': {'a': 1},
         'lib/b.dart': {'b': 1},
@@ -220,7 +224,55 @@ void main() {
     expect(otherReportFiles(null, ['lib/a.dart']), isEmpty);
     expect(otherReportFiles('{', ['lib/a.dart']), isEmpty);
     expect(otherReportFiles('[]', ['lib/a.dart']), isEmpty);
-    expect(otherReportFiles('{"files": 1}', ['lib/a.dart']), isEmpty);
+    expect(
+      otherReportFiles(jsonEncode({...buildReport(const {}), 'files': 1}), [
+        'lib/a.dart',
+      ]),
+      isEmpty,
+    );
+  });
+
+  test('otherReportFiles: nothing is kept of a report that another tool, '
+      'or another version of this one or of its mutators, wrote', () {
+    final files = {
+      'lib/b.dart': {'b': 1},
+    };
+    final own = buildReport(const {});
+    List<Object?> kept(JsonObject report) => [
+      for (final path in otherReportFiles(
+        jsonEncode({...report, 'files': files}),
+        ['lib/a.dart'],
+      ).keys)
+        path,
+    ];
+    expect(kept(own), ['lib/b.dart']);
+    expect(
+      kept({
+        ...own,
+        'framework': {'name': 'dart_mutant', 'version': '0.1.0'},
+      }),
+      isEmpty,
+    );
+    expect(
+      kept({
+        ...own,
+        'framework': {'name': 'other', 'version': packageVersion},
+      }),
+      isEmpty,
+    );
+    expect(kept({...own}..remove('framework')), isEmpty);
+    expect(
+      kept({
+        ...own,
+        'config': {'mutatorsVersion': mutatorsVersion + 1},
+      }),
+      isEmpty,
+    );
+    expect(kept({...own}..remove('config')), isEmpty);
+    expect(writerOf(own), {
+      'framework': {'name': 'dart_mutant', 'version': packageVersion},
+      'mutatorsVersion': mutatorsVersion,
+    });
   });
 
   test('otherReportFiles: nothing is kept of a part of a run', () {
@@ -230,7 +282,7 @@ void main() {
     expect(
       otherReportFiles(
         jsonEncode({
-          'config': reportConfig(shard: const Shard(1, 2)),
+          ...buildReport(const {}, shard: const Shard(1, 2)),
           'files': files,
         }),
         ['lib/a.dart'],
@@ -238,7 +290,7 @@ void main() {
       isEmpty,
     );
     expect(
-      otherReportFiles(jsonEncode({'config': reportConfig(), 'files': files}), [
+      otherReportFiles(jsonEncode({...buildReport(const {}), 'files': files}), [
         'lib/a.dart',
       ]),
       files,
@@ -285,7 +337,7 @@ void main() {
 
     test('what is kept of the input, key by key', () {
       expect(input.toJson(), {
-        'toolVersion': '0.1.0',
+        'toolVersion': '0.1.1',
         'mutatorsVersion': 2,
         'command': ['dart', 'test'],
         'source': source,

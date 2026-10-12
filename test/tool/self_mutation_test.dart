@@ -66,6 +66,16 @@ void main() {
     expect(tool(['--matrix', '--force']).exitCode, 2);
   });
 
+  test('--schemata is refused, as dart_mutant run refuses it', () {
+    final result = tool(['--schemata', '--gate', gates.first]);
+    expect(result.exitCode, 2);
+    expect(
+      result.stderr,
+      contains('self_mutation: --schemata was withdrawn in 0.1.1'),
+    );
+    expect(result.stdout, isEmpty);
+  });
+
   test('--merge: a directory without the parts fails', () {
     final empty = Directory.systemTemp.createTempSync('dart_mutant_parts_');
     addTearDown(() => empty.deleteSync(recursive: true));

@@ -418,16 +418,16 @@ void main() {
         ),
         (
           (report) => (report['framework']! as JsonObject)['name'] = 'other',
-          'other 0.1.0, mutators 2',
+          'other 0.1.1, mutators 2',
         ),
         (
           (report) => (report['config']! as JsonObject)['mutatorsVersion'] = 1,
-          'dart_mutant 0.1.0, mutators 1',
+          'dart_mutant 0.1.1, mutators 1',
         ),
         (
           (report) =>
               (report['config']! as JsonObject).remove('mutatorsVersion'),
-          'dart_mutant 0.1.0, mutators null',
+          'dart_mutant 0.1.1, mutators null',
         ),
         ((report) => report.remove('framework'), 'null null, mutators 2'),
       ]) {
@@ -437,7 +437,7 @@ void main() {
         expect(merged.files, isEmpty);
         expect(merged.problems, [
           'shard 2/2 (part-2.json) was written by $versions; this is '
-              'dart_mutant 0.1.0, mutators 2',
+              'dart_mutant 0.1.1, mutators 2',
         ]);
       }
     });

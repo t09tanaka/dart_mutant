@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.1.1 (not yet published)
+
+`--schemata` is withdrawn: it could report a mutant as killed that survives.
+
+- **What happens.** `dart_mutant run --schemata` is refused with exit code 2
+  and a line that says why. Nothing is run. `--no-schemata` is accepted as
+  before, and a run without either option does what it did.
+- **Why.** With `--schemata`, 0.1.0 ran the tests of a file once per mutant
+  in one process. Tests leave things behind in their process (a list that
+  was added to, a counter), and when the code under test is what clears
+  them (`setUpAll(clearNames)`, a first test that resets), a mutant that
+  empties the clearing code changes nothing in a process that has just
+  started: it survives a run of its own. In the one process its tests
+  started with what the round before had left, failed, and the mutant was
+  reported as `Killed`; a run could end with `OK` and exit code 0 where a
+  mutant survives. The tests without a mutant, which 0.1.0 ran before and
+  after, cannot show this: without a mutant the code that clears is at
+  work.
+- **Who is affected.** Only results of 0.1.0 from a run that was given
+  `--schemata` (experimental, and not the default). A `Killed` from such a
+  run is not to be trusted; the other statuses of such a run were measured
+  by a run of the mutant on its own, as without the option. A run without
+  `--schemata` is not affected, unless it is a run of 0.1.0 that reuses the
+  results of one that had the option: 0.1.0 reuses the results of its last
+  run whichever way they were measured.
+- **What to do.** Run again without `--schemata`. A result of the last run
+  is reused while the file, its tests and the test command are the same,
+  but not across versions of this tool, so the first run with 0.1.1 tests
+  every mutant again. With 0.1.0, give `--force` to that run.
+- A run with `--only` keeps what the report says about the other files only
+  when this version of the tool, with these mutators, wrote that report.
+  Before, a report of any version was kept under the name of the version
+  that ran last, so the results of 0.1.0 with `--schemata` could have
+  stayed in a report of 0.1.1. `merge` already refused the parts of
+  another version.
+- The package that shows it is in the tests of this package
+  (`test/fixtures/leftover`, `test/commands/leftover_state_test.dart`),
+  with what a run of its own for every mutant says about it. The code
+  behind the option stays in the package and is not reachable from the
+  command line; see "`--schemata` was withdrawn" in the README.
+
 ## 0.1.0 (2026-10-12)
 
 First version.
@@ -72,7 +113,8 @@ First version.
   run: another number of parts, other files, sources or mutants, another
   version of the tool or of its mutators, a file that could not be tested.
 - The report has `config.mutatorsVersion`.
-- `--schemata` (experimental, not the default): the mutants of a file are
+- (Withdrawn in 0.1.1, see above.) `--schemata` (experimental, not the
+  default): the mutants of a file are
   built into the file behind a variable, and its tests are run on all of
   them in one process, by a test file that calls the tests once per mutant.
   The test runner starts once per file instead of once per mutant. Only

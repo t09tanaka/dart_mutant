@@ -10,7 +10,6 @@ Mutation testing for Dart and Flutter.
 - **Mutants that cannot compile are found before a test is run.** Dart is null-safe and statically typed, so many textbook mutants are not programs. Every mutant is checked by the analyzer in memory, in a few milliseconds; only the ones that compile cost a test run.
 - **Nothing to add to your project.** It runs as a program of its own and reads the package the way `dart` and `flutter` do. It does not have to resolve next to your code generators.
 - **Several mutants at a time, in copies of the package.** The mutants are put into working copies below `.dart_tool`, one test run in each, so your own files are not written while it runs. A second `dart_mutant` in the same package is turned away instead of getting in the way of the first.
-- **All mutants of a file in one program, as an option.** With `--schemata` the mutants of a file are built into it behind a variable, and the tests are run on all of them in one process: the test runner starts once per file instead of once per mutant. Experimental, and not the default; see [below](#all-mutants-of-a-file-in-one-program---schemata).
 - **A report other tools can read, and a page to look at.** The result is written in the [mutation-testing-elements](https://github.com/stryker-mutator/mutation-testing-elements) JSON schema, and with `--html` as a page that shows every mutant at its place in the source.
 
 ```
@@ -90,19 +89,19 @@ The keys are `version` and `targets`, and in a target `file` and `tests`. It is 
 | ----------------- | ---------------------------------------------------------------------------------------------------- |
 | `--dir <package>` | The package to mutate. Default: `.`, the current directory                                           |
 | `--plan <file>`   | The plan file (a path as your shell sees it). Not together with files as arguments                   |
-| `--only <file>`   | Limit the run to this file of the plan or of the arguments. May be given more than once. A path that is not a file of the run is wrong usage. The report keeps what it says about the other files. It is what `--gate` is in `test_gates`; this tool knows no list of gates and is given files, hence `--only` |
+| `--only <file>`   | Limit the run to this file of the plan or of the arguments. May be given more than once. A path that is not a file of the run is wrong usage. The report keeps what it says about the other files, when this version of the tool wrote it. It is what `--gate` is in `test_gates`; this tool knows no list of gates and is given files, hence `--only` |
 | `--report <path>` | Where the report is written (a path as your shell sees it). Default: `reports/mutation/mutation.json` in the package. A file that is already there is only replaced when it is a report |
 | `--html <path>`   | Also write the report as a page for a browser (a path as your shell sees it, ending in `.html`), see [The report as a page](#the-report-as-a-page---html). A file that is already there is only replaced when it is such a page |
 | `--force`         | Run every mutant again, see [Results of the last run](#results-of-the-last-run-and---force)          |
 | `--jobs <n>`      | How many test runs are started at a time, see [Several mutants at a time](#several-mutants-at-a-time---jobs). Default: a quarter of the processors, at least 1 and at most 4. `1` changes the files in place, one mutant at a time |
-| `--schemata`      | Experimental. Build the mutants of a file into one program and run its tests on all of them in one process, see [All mutants of a file in one program](#all-mutants-of-a-file-in-one-program---schemata) |
-| `--no-schemata`   | One start of the test runner per mutant. The default                                                 |
+| `--no-schemata`   | One start of the test runner per mutant. That is what a run does; the option only says so        |
+| `--schemata`      | Withdrawn in 0.1.1, and refused (exit code 2), see [`--schemata` was withdrawn](#--schemata-was-withdrawn) |
 | `--shard <i>/<n>` | Run part `i` of `n` of the mutants of each file, see [A run in several parts](#a-run-in-several-parts---shard-and-merge). The report is then a part, not a result |
 | `-h`, `--help`    | Show the help                                                                                        |
 | `-v`, `--version` | Show the version                                                                                     |
 | `-- <command>`    | The command that runs test files                                                                     |
 
-**The test command** is `flutter test --no-pub` when the pubspec has a dependency from the Flutter SDK, and `dart test` otherwise. A command after `--` replaces it (`-- fvm flutter test --no-pub`). `--fail-fast --timeout 10s` and the test files are appended to it, so it has to be a `dart test` / `flutter test` of some kind. It is started in the package, without a shell. (With `--schemata` the program that holds all mutants of a file is run with `--timeout 10s --reporter json` instead, so the command has to take those as well.)
+**The test command** is `flutter test --no-pub` when the pubspec has a dependency from the Flutter SDK, and `dart test` otherwise. A command after `--` replaces it (`-- fvm flutter test --no-pub`). `--fail-fast --timeout 10s` and the test files are appended to it, so it has to be a `dart test` / `flutter test` of some kind. It is started in the package, without a shell.
 
 ### What it prints, and the exit code
 
@@ -114,7 +113,7 @@ The lines of the files and the `OK` line go to stdout. What is wrong goes to std
 | --------------- | --------------------------------------------------------------------------------------------- |
 | 0               | No mutant survived                                                                            |
 | 1               | A mutant survived, or something could not be mutation tested: a file without a test, tests that fail without a mutant, a file that is not there or cannot be parsed, a package that is not resolved, a test command that cannot be started, a page of `--html` that cannot be written (the report is written), another `dart_mutant` at work in the package (nothing is changed then). For `merge`: a mutant survived, or the parts are not all the parts of one run (no report is written then) |
-| 2               | Wrong usage, or a plan file that cannot be used: an unknown option, a plan that cannot be read or has a key it does not know, a glob that matches nothing, a file that is not a `.dart` file inside the package, a `--report` or `--html` that would replace a file of another kind. Nothing is run or changed |
+| 2               | Wrong usage, or a plan file that cannot be used: an unknown option, a plan that cannot be read or has a key it does not know, a glob that matches nothing, a file that is not a `.dart` file inside the package, a `--report` or `--html` that would replace a file of another kind, `--schemata`. Nothing is run or changed |
 | 130 / 143 / 129 | Interrupted (SIGINT / SIGTERM / SIGHUP); the working copies were removed, or the files were put back, and no report was written |
 
 A run starts by removing the report of the last run (with `--only`: what it says about the files of this run), and the page of `--html` with it, so that a run that writes none cannot be read as a result. A run that is interrupted, or that has to stop (the package is not resolved, the test command cannot be started, a file changed during the run), writes no report and does not list the survivors it had found.
@@ -223,7 +222,6 @@ A mutant can make a loop that never ends add to a list on every round (`i++` →
 - While a test run is at work, the tool asks `ps` ten times a second for the memory of the test command and of every process that descends from it (their resident sets, added up), also during the run without a mutant.
 - **The test run of one mutant may hold twice the most the run without a mutant held, plus 1 GB.** With more than one job the run without a mutant is done in every working copy, and the one that held the most counts.
 - A test run that holds more is killed at once, with the processes it started. Its mutant is not called `Killed`: like one that reaches the time limit it is **run again alone** when there is more than one job, and it is a `Timeout` when a limit ends that second run as well; otherwise it gets the status of that second run. With one job, and for a file that is run in place, it is a `Timeout` the first time. The report has `the test run used more than … MB of memory and was ended` as its `statusReason`, and a line says how many there were (`1 mutant(s) used more than 2448 MB of memory, were ended and run again alone: 1 reached a limit then as well (Timeout)`).
-- With `--schemata` the limit of the program that holds all mutants is made the same way, from what it held while the first position of its plan was at work: until the tests without a mutant were declared for the first time, and again, with everything it held until then, until they had run for the first time. When it holds more with a mutant at work, it is ended, that mutant is run the usual way (which measures it by itself and decides), and another driver is started for the mutants after it. When it holds more while the tests are declared or run without a mutant later in the plan, nothing the drivers of that file reported is used, and every mutant of the file is run the usual way.
 
 Like the time limits it is not a setting, and such a `Timeout` is measured again by every run. What it does not do:
 
@@ -276,84 +274,51 @@ The copies are inside `.dart_tool`, so the analyzer of your editor, `dart analyz
 
 **It costs** one copy of the package per job (without `build/`: a few megabytes to a few tens, well under a second each), and one run of the tests without a mutant per copy and file instead of one per file.
 
-## All mutants of a file in one program (`--schemata`)
+## `--schemata` was withdrawn
 
-**Experimental, and not the default.** One start of the test runner per mutant is where the time goes: the runner starts, the tests are compiled, and only then do they run. With `--schemata` the mutants of a file are built into the file once, each behind the same variable, and the tests are run on all of them in one process (the technique is known as mutant schemata).
+**0.1.1 refuses `--schemata`**: exit code 2, and nothing is run. **Do not trust a `Killed` from a run of 0.1.0 with `--schemata`; run again without the option** (with 0.1.0 itself, also with `--force`: it reuses the results of its last run whichever way they were measured). A run that neither has the option nor reuses the results of one that had it is not affected; that is the default in 0.1.0 as well. 0.1.1 reuses nothing that 0.1.0 measured, and a run with `--only` keeps nothing of a report that 0.1.0 wrote.
 
-```
-$ dart_mutant run --schemata lib/discount.dart
-  lib/discount.dart: 18 of 22 mutant(s) built into one program, with "dart test --timeout 10s --reporter json test/dart_mutant_driver_test.dart" (4 do not compile)
-  lib/discount.dart: 16 killed with the mutants built in; 2 not killed that way are measured the usual way
-  lib/discount.dart: 2 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 2 at a time
-  lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (9.0s)
-dart_mutant run: 2 surviving mutant(s)
-  - lib/discount.dart:7:30 / NumberLiteral / 0 → 1 (Survived)
-  - lib/discount.dart:8:39 / MethodExpression / round → ceil (Survived)
-dart_mutant run: FAILED (22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run))
-```
+The option of 0.1.0 (experimental, not the default) built the mutants of a file into the file behind a variable and ran the tests on all of them in one process, once per mutant, to save a start of the test runner for each. Only `Killed` was taken from that process, and only while the tests passed without a mutant before and after.
 
-The mutants, their numbers, the report and the exit code are those of a run without the option. **Only `Killed` is ever taken from the one program**; everything else is run the usual way, one start of the test runner per mutant, before it is reported. The rules below are there so that the statuses are the same either way. In what was measured they were, mutant by mutant (see [How long it takes](#how-long-it-takes)); what is not guaranteed is under [What can still go wrong](#what-can-still-go-wrong).
-
-### How a mutant is built in
-
-The smallest expression or statement around a mutant becomes a choice between the mutant and the code that was there. This is a line of [`example/lib/discount.dart`](example/lib/discount.dart) as the tests are run on it, with four of its mutants:
+That is not enough. Tests leave things behind in their process, and the code under test can be what clears them:
 
 ```dart
-  final rate = ($dartMutantActive == 11 ? (percent) : (percent.clamp(($dartMutantActive == 12 ? (1) : (0)), ($dartMutantActive == 13 ? (101) : $dartMutantActive == 14 ? (99) : (100)))));
+// lib/registry.dart
+final _names = <String>[];
+
+void clearNames() {
+  _names.clear();
+}
+
+void register(String name) {
+  _names.add(name);
+}
+
+int get registered => _names.length;
 ```
 
-- An expression becomes `($dartMutantActive == n ? (mutant) : (original))`, a statement `{ if ($dartMutantActive == n) { mutant } else { original } }`. Several mutants of one node are asked one after the other; a mutant inside the node of another is built into the original of that one.
-- `int $dartMutantActive = -1;` is added at the end of the file, so no place in the file moves. It is a variable of the program, set while the program runs. Nothing is passed to the compiler, and nothing is compiled between two mutants.
-- **A place is only taken when the program stays what it was.** The analyzer is asked three things about a place before any test runs: the file compiles with the choice there; every expression outside the place has the static type it has in the file as it is (so the code without a mutant at work is compiled to what it was compiled to: the same inferred types, the same promotions, the same calls); and the same holds for the file with the mutant in place (so the code with the mutant at work is that mutant). When the smallest place fails (the condition of a null check would lose its promotion; `var x = a * b` would declare another type with `a / b` next to it), the next larger one is tried: the statement, the block around it, up to 4,000 characters. A statement that declares a name for the statements after it is never a place of its own.
+```dart
+// test/registry_test.dart
+void main() {
+  setUpAll(clearNames);
 
-### The driver
+  test('registers one', () {
+    register('a');
+    expect(registered, 1);
+  });
 
-The tests are run by a test file that is written next to the tests of the file, **in a working copy** (with any number of jobs; your files are only written for a file that cannot be run from a copy at all, as with `--jobs`): `dart_mutant_driver_test.dart`. It reads a plan, and for every entry it sets the variable, calls `main()` of each test file inside a group of its own, and sets the variable back. The mutant is at work while the tests are declared as well, as it would be in a run of its own: tests that are generated from the code under test are generated from the mutant.
+  test('registers another', () {
+    register('b');
+    expect(registered, 2);
+  });
+}
+```
 
-The plan starts with the tests **without a mutant**, repeats them after every 25 mutants, and ends with them. The driver is run with the test command, `--timeout 10s --reporter json`, and the tool reads the result of every test as it comes.
+Take the mutant `{ _names.clear(); }` → `{}`. In a run of its own the process has just started, there is nothing to clear, and both tests pass: `Survived`, which is the result (no test says what `clearNames()` is for). With `--schemata` the tests of this mutant started with the names the rounds before had registered, the first test found more than its one, and the mutant was reported as `Killed`: a run on this file ended with `OK` and exit code 0 where it ends with a survivor and exit code 1. The tests without a mutant cannot show this, because without a mutant the code that clears is at work.
 
-### What is taken from it, and what is not
+It is the one mistake this tool must not make, so the option is gone rather than documented. The package above, and one with a counter that the first test resets, are [`test/fixtures/leftover`](test/fixtures/leftover); [`test/commands/leftover_state_test.dart`](test/commands/leftover_state_test.dart) holds what a run of its own for every mutant says about them, and what the withdrawn way said.
 
-| What the driver shows for a mutant | What happens |
-| ---------------------------------- | ------------ |
-| A test failed, and the tests without a mutant passed before it and after it | `Killed`. The other tests of that mutant are not run (the driver is told through a file; a test that had already started still runs) |
-| No test failed | Run the usual way, and reported as that run says. A process keeps what it has computed (a `static final`, a cache, a singleton), and it was computed while no mutant was at work: a mutant in that code is never run again in the same process. **`Survived` is always the verdict of a run of its own** |
-| Its tests did not end | The limit is that of a run of its own (three times the first run of the tests without a mutant, plus 20 seconds). The driver is ended with the processes it started, the mutant is run the usual way, which decides whether it is a `Timeout`, and another driver is started for the mutants after it. The mutants since the tests last passed without a mutant are run the usual way as well |
-| The driver held more memory than its limit while the mutant was at work, see [Memory limit](#memory-limit) | The same: the driver is killed at once, the mutant is run the usual way, which measures it by itself, and another driver is started for the mutants after it |
-| The tests fail without a mutant: at the start (they cannot be run this way), or later (a mutant left something behind in the process) | Nothing the drivers of that file reported is used. Every mutant of the file is run the usual way, and a line says which test failed |
-| The driver cannot be loaded (a mutant breaks another file, say) | The same |
-| Every mutant of the file is killed in the driver | The tests are run once the usual way, without a mutant, before that is believed: test files that only pass together in one process pass in the driver, and are no tests to judge a mutant by |
-
-### What cannot be built in
-
-Run the usual way, and counted in the line of the file (`12 cannot be built in (…)`):
-
-- **A constant.** The element of a `const` list, map, set or record, the default of a parameter, the argument of a `const` constructor, a `case` of a `switch`, a value of an `enum`: a choice made while the program runs is no constant. (Some of them are counted under the next reason, or as "does not compile with a choice there": the line gives the reason as the tool found it.) Where a statement around the constant can take the choice it does (`return const [1, 2];`); in a top-level `const` nothing can.
-- **An initializer that runs once in a process**: of a top-level variable or a `static` field, outside every function in it. It runs when the variable is first read, with the mutant that is at work then, and never again.
-- A place where every choice changes the program (see above) and no statement around it is small enough.
-- A mutant that compiles in the program by itself but not with the mutants that are already in it (`does not compile together with the other mutants`). Two mutants that each take away one of two assignments to a variable are each a program; with both built in, the compiler sees a way on which the variable has no value, although no run ever takes it.
-- A whole file: a `part of` file (the driver has to import the file to set the variable), a file that starts with a byte order mark, a file that uses the name `$dartMutantActive`.
-- The tests of a file, when the driver cannot call them as the test runner does: no `main()`, a `main` that takes arguments or is `async`, an annotation on the library (`@Timeout`, `@TestOn`, `@Retry`, `@Tags`, `@Skip`: it is for the test runner, which would not see it on the driver), tests in more than one directory, a file that already has the name of the driver, a package with neither `test` nor `flutter_test`. A line on stderr says which.
-- A package that cannot be run from a working copy (a pub workspace, a `path:` dependency outside the package): `--schemata` then does nothing, and says so.
-- A file whose results are taken from the last run. Only its `Timeout`s are measured again, the usual way.
-
-In what was measured, between none and a bit more than a third of the mutants of a file that compile could not be built in; over all files it was about one in eight. Nearly all of those were in top-level tables of constants.
-
-### With `--jobs`
-
-The drivers run in the working copies of `--jobs`: when a file has more than 25 mutants to build in, they are shared out between up to as many drivers as there are jobs, each in its copy. What is left for the usual way is then run in the same copies, as many at a time as there are jobs. `--jobs 1 --schemata` uses one copy and writes nothing to your files; a file that cannot be run from a copy (behind a symbolic link, or with tests that fail there) is run in place, as with `--jobs`.
-
-`--plan`, `--only`, `--force`, `--report`, `--html`, `--shard`, the results of the last run and the lock mean what they mean without the option. A part of a run (`--shard`) builds in the mutants of that part only, and the parts are put together by `merge` as always. The results of the last run do not say which way they were measured, and are reused either way.
-
-### What can still go wrong
-
-- **A mutant can leave something behind in the process that fails the tests of a later mutant, and that the tests without a mutant do not see.** That later mutant is then reported as `Killed` although its own run would have let it survive. The checks every 25 mutants find what stays and what the tests without a mutant come across. They cannot find what is gone again by then, and they cannot find what only code that a mutant reaches ever reads: a `static final` that is first read with a mutant at work keeps the value that mutant gave it, and the next mutant that gets there reads it. It did not happen in what was measured (see [How long it takes](#how-long-it-takes)). It is the reason this is an option and not the default: a survivor that is reported as killed is the one mistake this tool must not make.
-- **The choices are checked one by one.** That the program keeps its static types is asked of every choice alone; of all choices of a file together only that they compile.
-- **All test files of a file share one process and one isolate**, one after the other, where the test runner gives each a process of its own. Test files that only pass alone fail the first run without a mutant, and the file is run the usual way.
-- **Configuration that is tied to the path of a test file** (`dart_test.yaml` with settings for single paths) does not reach the driver.
-- **Code that runs in another isolate** does not see the variable. Its mutants are not killed in the driver and are run the usual way.
-- **It does not always pay.** A mutant that survives costs its run in the driver and then a run of its own. A file whose mutants mostly survive, or mostly cannot be built in, takes about as long as without the option; so does a file whose tests take seconds, where the time was never the start of the runner.
-- **A test that is slow because the machine is busy** fails as it does without the option; when that is a test without a mutant, the whole file falls back to the usual way.
+The code behind the option is still in the package (`lib/src/schemata.dart`, `lib/src/driver.dart`, `lib/src/commands/built_in.dart`) and is tested as before, but the command line does not reach it. A way to run several mutants in one start of the test runner is only offered again when it gives every mutant of that fixture the status of a run of its own.
 
 ## A run in several parts (`--shard` and `merge`)
 
@@ -489,7 +454,7 @@ Wrong usage (exit code 2) is reported without the lock.
 
 ## Your files during a run with one job
 
-With `--jobs 1` and without `--schemata` (the default on a machine with fewer than 8 processors, and what a package that cannot be copied falls back to) the files are changed **in place**, one mutant at a time, one file at a time. Do not edit a file that is being mutated, commit, or switch branches while it runs.
+With `--jobs 1` (the default on a machine with fewer than 8 processors, and what a package that cannot be copied falls back to) the files are changed **in place**, one mutant at a time, one file at a time. Do not edit a file that is being mutated, commit, or switch branches while it runs.
 
 - Before the first mutant goes into a file, the file is copied to `.dart_tool/dart_mutant/backup/<path>`. Every mutant, and the original after it, is put in place by writing a file next to the backups and renaming it over the file, so the file is never half-written. The bytes are put back as they were (line ends, a byte order mark).
 - The mutant is taken out after every test run, when the tool itself throws, and on **Ctrl-C (SIGINT), SIGTERM and SIGHUP**: the test run is ended first, with the processes it started, then the file is put back, then the tool exits with 130 / 143 / 129 without a report.
@@ -542,7 +507,7 @@ What connects them today is the report. `test_gates` 0.1.x has a mutation test o
 - **Experiments are not enabled.** Because the analysis options are set aside, a package that needs `enable-experiment` is analyzed without it; the errors that gives are in the file before any mutant, so they are not counted against one, but the check is weaker there.
 - **The analyzer has to know the SDK of the package.** This version uses `analyzer` 14.5. A package on an SDK with language features that analyzer does not know yet cannot be analyzed until this tool is updated.
 - **Windows, and systems without `ps`.** The tool is developed and tested on macOS and Linux. On Windows only SIGINT is delivered, and the command is started through a shell. The processes a test run started are found with `ps`; where there is none (and on Windows) only the test runner itself is ended at a timeout or on a signal, and a test process that it started can be left behind, still running. The memory of a test run is measured with `ps` as well: there it is not limited, see [Memory limit](#memory-limit).
-- **One test run per mutant, unless `--schemata` is given.** Every mutant that compiles costs a start of the test runner on the tests of its file; several of them run at the same time, but nothing is shared between them. With `--schemata` the mutants of a file are compiled into one program; that is experimental, see [What can still go wrong](#what-can-still-go-wrong).
+- **One test run per mutant.** Every mutant that compiles costs a start of the test runner on the tests of its file; several of them run at the same time, but nothing is shared between them. The option of 0.1.0 that shared one start between the mutants of a file was [withdrawn](#--schemata-was-withdrawn).
 - **Working copies.** Tests that depend on where the package is (an absolute path, a file in a directory that is not copied, a `path:` dependency outside the package, a pub workspace) are run in place, one at a time, see [above](#several-mutants-at-a-time---jobs). The test runs of a run that was killed outright (SIGKILL) can go on until they end by themselves; the copies they run in are removed by the next run.
 - **A test that is slow because the machine is busy fails like any other.** A test gets 10 seconds; with many jobs on a machine that is busy with other work, a test that needs seconds already can reach that, and its mutant is `Killed` although it would have survived. The time limit of a whole test run is guarded against this (the mutant is run again alone); the limit of one test is the test runner's. Use fewer jobs if the statuses differ between two runs.
 
@@ -566,23 +531,6 @@ The gates of this package itself (see [Development](#the-gates-of-this-package))
 
 In the workflow of this package (hosted runners of GitHub Actions, `--jobs 2`, one job per gate) the gate with the slowest tests, 544 mutants of which 483 compile, took 54 minutes as one job. Divided with `--shard` into four jobs, each took 9 to 14 minutes, and the whole workflow 16 minutes from start to end. The four parts had 119 to 122 test runs each and still differed that much: one test run cost between 4 and 7 seconds from job to job. The jobs together took a little less time than the one (46 minutes against 54 in these two runs), so dividing cost nothing there; for a file whose mutants take seconds in total, the checkout, `pub get` and the tests without a mutant of every part would outweigh what is gained.
 
-### With `--schemata`
-
-Measured on the same machine on a quieter day, with `--force`: one start of the test runner per mutant with one job and with the default three, and the mutants built in (`--schemata`, three jobs).
-
-| Package                                                   | Mutants   | `--jobs 1`    | `--jobs 3`    | `--jobs 3 --schemata` |
-| --------------------------------------------------------- | --------- | ------------- | ------------- | --------------------- |
-| [`example/`](example/) of this package, one file          | 22        | 23 s          | 14 s          | 12 s                  |
-| Pure Dart, five files                                     | about 340 | about 6 min   | about 2 min   | about 40 s            |
-| Flutter app, tests next to the files, five files          | about 145 | about 4 min   | about 2 min   | about 1.5 min         |
-| Flutter app, tests under `test/`, five files              | about 165 | about 6 min   | about 2.5 min | about 1.5 min         |
-| The gates of this package, 15 files                       | 2,804     | 72 min        | 26 min        | about 10 min          |
-
-- **The statuses of every mutant were the same with and without `--schemata`** in all five, report against report: the same mutants, places and statuses, about 3,000 of them. Two of the five files of each Flutter app are widgets, tested with `testWidgets`.
-- Between 85% and 100% of the mutants that compile were built in.
-- No mutant was killed in a driver whose tests then failed without a mutant, so no file fell back as a whole. The mutants no test failed on in a driver survived their own run as well; the exception is one file of this package, where a driver was ended at a mutant that did not end and the mutants since its last check were measured again (they were killed).
-- **How much it gains depends on what the time was spent on.** The pure Dart files have fast tests and few survivors: nearly all of the time was starts of the test runner, and is gone. In the first Flutter app many of the mutants survive, and every survivor is run again on its own. In this package most of what is left is the mutants in tables of constants, which cannot be built in, on the two files whose tests take seconds.
-
 A second run without `--force` and without a change takes under a second, and makes no copy.
 
 ## Development
@@ -594,9 +542,9 @@ dart analyze --fatal-infos
 dart test
 ```
 
-The code under `lib/src/` is not an API. What decides something is in pure functions: making the mutants (`syntax_mutators.dart`, `typed_mutators.dart`), numbering them, classifying a test run, building the report and reusing results (`mutation_run.dart`), the parts of a run and putting them together (`shard.dart`, `merge.dart`), the page (`html_report.dart`), the plan and the paths (`plan.dart`), the command line (`args.dart`), the rules of the working copies (`parallel.dart`) and of the lock (`lock_state.dart`), where a mutant can be built into its file and what the file is then (`schemata.dart`), and the driver, its plan and what its report means (`driver.dart`). The analysis session, the files, the copies, the lock and the processes are in `lib/src/io/`, and `lib/src/commands/` puts them together (`run.dart`, `merge.dart`; `built_in.dart` for `--schemata`).
+The code under `lib/src/` is not an API. What decides something is in pure functions: making the mutants (`syntax_mutators.dart`, `typed_mutators.dart`), numbering them, classifying a test run, building the report and reusing results (`mutation_run.dart`), the parts of a run and putting them together (`shard.dart`, `merge.dart`), the page (`html_report.dart`), the plan and the paths (`plan.dart`), the command line (`args.dart`), the rules of the working copies (`parallel.dart`) and of the lock (`lock_state.dart`), and, for the [withdrawn `--schemata`](#--schemata-was-withdrawn), where a mutant can be built into its file and what the file is then (`schemata.dart`) and the driver, its plan and what its report means (`driver.dart`). The analysis session, the files, the copies, the lock and the processes are in `lib/src/io/`, and `lib/src/commands/` puts them together (`run.dart`, `merge.dart`; `built_in.dart` for the mutants built into one program, which the command line no longer asks for).
 
-The tests under `test/commands` start processes (the command line, with a stand-in for the test runner, and the real `dart test` on `example/` and, for `--schemata`, on a package the test writes); they carry the tag `process`.
+The tests under `test/commands` start processes (the command line, with a stand-in for the test runner, and the real `dart test` on `example/`, on the package of `test/fixtures/leftover`, and, for the mutants built into one program, on a package the test writes); they carry the tag `process`.
 
 ### The gates of this package
 
@@ -614,7 +562,6 @@ The mutation test of the gates is run by this package itself, and judged by `tes
 dart run tool/self_mutation.dart                              # every gate
 dart run tool/self_mutation.dart --gate lib/src/plan.dart     # one gate
 dart run tool/self_mutation.dart --force                      # nothing from the last run
-dart run tool/self_mutation.dart --schemata                   # the mutants of a gate in one program
 ```
 
 In the workflow ([`.github/workflows/mutation.yml`](.github/workflows/mutation.yml)) every gate is a job of its own, and the gates whose tests are slow are run in parts (`--shard`), which the last job puts together (`merge`) and judges. Which gates, and into how many parts, is written in one place, `_shards` in the script; the jobs are made from it and from `test-gates.json`:

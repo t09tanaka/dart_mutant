@@ -81,10 +81,14 @@ String compiledFake() {
 ///
 /// Compiled once per test file, every time: what is started is the code as
 /// it is now, without a compiler in front of every start.
+///
+/// With [entry], that program is compiled in its place: a way into the
+/// code that the command line no longer has.
 class CompiledCommandLine {
-  CompiledCommandLine() : _directory = _workspace() {
+  CompiledCommandLine({String entry = 'bin/dart_mutant.dart'})
+    : _directory = _workspace() {
     try {
-      _compile(['kernel', 'bin/dart_mutant.dart'], _kernel);
+      _compile(['kernel', entry], _kernel);
     } on StateError {
       delete();
       rethrow;

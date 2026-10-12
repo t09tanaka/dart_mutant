@@ -1,0 +1,14 @@
+class Counter {
+  int value = 0;
+
+  void reset() {
+    value = 0;
+  }
+
+  int bump() {
+    value += 1;
+    return value;
+  }
+}
+
+final shared = Counter();

@@ -1,8 +1,18 @@
 import 'shard.dart';
 
-/// Whether the mutants of a file are built into one program when neither
-/// `--schemata` nor `--no-schemata` is given.
+/// Whether the mutants of a file are built into one program when
+/// `--no-schemata` is not given. The command line cannot ask for it:
+/// `--schemata` was withdrawn, see [schemataWithdrawn].
 const schemataByDefault = false;
+
+/// What `--schemata` is answered with. The option of 0.1.0 ran the tests of
+/// a file once per mutant in one process, and a mutant no run of its own
+/// kills could be reported as killed there.
+const schemataWithdrawn =
+    '--schemata was withdrawn in 0.1.1: it ran the tests of a file many '
+    'times in one process, where a test can fail on what an earlier round '
+    'left behind, so a mutant that survives a run of its own could be '
+    'reported as killed. Run without it';
 
 /// The command line of `dart_mutant run`.
 class RunArgs {
@@ -44,8 +54,9 @@ class RunArgs {
   /// when the run is divided.
   final Shard? shard;
 
-  /// `--schemata` (true) or `--no-schemata` (false): whether the mutants of
-  /// a file are built into one program. `null` when neither is given.
+  /// Whether the mutants of a file are built into one program. `false` for
+  /// `--no-schemata` and `null` without it; the command line never makes
+  /// it `true` ([schemataWithdrawn]).
   final bool? schemata;
 
   /// `--only`, once per file: the run is limited to these targets.
@@ -183,6 +194,9 @@ ParsedArgs parseArgs(List<String> argv) {
         'unknown argument for ${merge ? 'merge' : 'run'}: $argument',
       );
     }
+    if (name == '--schemata') {
+      throw UsageError(schemataWithdrawn);
+    }
     if (!_valueOptions.contains(name)) {
       if (inline) {
         throw UsageError('$name does not take a value');
@@ -192,9 +206,9 @@ ParsedArgs parseArgs(List<String> argv) {
         continue;
       }
       if (schemata != null) {
-        throw UsageError('--schemata or --no-schemata is given twice');
+        throw UsageError('--no-schemata is given twice');
       }
-      schemata = name == '--schemata';
+      schemata = false;
       continue;
     }
     final String value;
@@ -330,14 +344,11 @@ Options:
                    number modulo n), for a run that is divided over several
                    machines. The report is then a part: the other mutants
                    are in it as Pending.
-  --schemata       Experimental. Build the mutants of a file into one
-                   program and run its tests on all of them in one process,
-                   instead of one start of the test runner per mutant. Only
-                   "killed" is taken from that; every other mutant is run
-                   the usual way, and so is what cannot be built in. Always
-                   in working copies. "--reporter json" is appended to the
-                   test command as well.
-  --no-schemata    One start of the test runner per mutant (the default).
+  --no-schemata    One start of the test runner per mutant. This is what
+                   a run does; the option only says so.
+  --schemata       Withdrawn in 0.1.1, and refused (exit code 2). In 0.1.0
+                   it could report a mutant as killed that survives a run
+                   of its own.
   -h, --help       Show this help
   -v, --version    Show the version
   -- <command>     The command that runs test files (default:

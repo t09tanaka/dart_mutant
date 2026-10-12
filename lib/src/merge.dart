@@ -41,12 +41,7 @@ class _Part {
 
 /// What a report says about the tool that wrote it. Two reports with the
 /// same answer were made by the same mutators.
-JsonObject _writerOf(JsonObject report) => {
-  'framework': report['framework'],
-  'mutatorsVersion': asObject(report['config'])?['mutatorsVersion'],
-};
-
-final _thisTool = _writerOf(buildReport(const {}));
+final _thisTool = writerOf(buildReport(const {}));
 
 String _versions(JsonObject writer) {
   final framework = asObject(writer['framework']);
@@ -141,7 +136,7 @@ _Part? _readPart(PartFile file) {
     }
     read[path] = _File(source, found);
   }
-  return _Part(file.name, part.shard, part.notTested, _writerOf(report), read);
+  return _Part(file.name, part.shard, part.notTested, writerOf(report), read);
 }
 
 /// Why the [file] at [path] of [part] is not the one [first] mutated, or
