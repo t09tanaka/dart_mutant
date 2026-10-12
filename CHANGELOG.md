@@ -2,7 +2,38 @@
 
 ## 0.2.0-dev (in development)
 
-TODO
+- **The mutants of a file share one start of the test runner.** They are
+  built into the file behind a variable, as `--schemata` of 0.1.0 built
+  them in, and one start of the test runner then runs a test file per
+  mutant, one after the other, **each in an isolate of its own**: the
+  mutant is at work from the first line of a program that has just
+  started, and nothing of the program is shared between two mutants. This
+  is the default. Only `Killed` is taken from the shared start; a mutant
+  no test fails on, one that does not end, and what cannot be built in get
+  a start of their own, as before.
+- The statuses are those of a start per mutant. A test of this package
+  requires that of a package of tests that are easy to get wrong
+  (`test/fixtures/hazards`, `test/commands/hazards_test.dart`), among them
+  the tests `--schemata` of 0.1.0 was withdrawn for: with an isolate per
+  mutant, the mutant that empties the code that clears a list starts with
+  an empty list.
+- A mutant in the initializer of a top-level variable or of a `static`
+  field can be built in now: the initializer runs once in an isolate, and
+  every mutant has its own. In 0.1.0 these were left to a start of their
+  own.
+- `--one-by-one`: one start of the test runner per mutant, as 0.1 ran
+  them. `--no-schemata` is kept as another name for it. `--schemata` is
+  still refused.
+- With one job the mutants are run in a working copy as well, and the files
+  of the package are not written. They are changed in place only with one
+  job and a start per mutant (`--one-by-one --jobs 1`, or one job in a
+  package whose package configuration has neither `test` nor
+  `flutter_test`), and in a package that cannot be copied.
+- The test command is also started with `--timeout 10s --concurrency 1
+  --reporter json` and the test files of the mutants, so it has to take
+  those.
+- The help says of `--only` that the other files of a report are kept when
+  this version wrote it (as 0.1.1 does).
 
 ## 0.1.1 (not yet published)
 

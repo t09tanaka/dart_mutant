@@ -189,7 +189,7 @@ dev_dependencies:
     }
     expect(
       together.lines.where(
-        (line) => line.contains('its mutants are run the usual way'),
+        (line) => line.contains('each of its mutants gets a start'),
       ),
       isEmpty,
     );

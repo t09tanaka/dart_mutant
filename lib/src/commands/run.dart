@@ -1011,8 +1011,8 @@ Future<int> _locked(
             }
             if (outcome.failure != null) {
               io.err(
-                '$executable run: $path: ${outcome.failure}; its mutants are '
-                'run the usual way',
+                '$executable run: $path: ${outcome.failure}; each of its '
+                'mutants gets a start of the test runner of its own',
               );
             } else {
               fromDriver = outcome.killed.keys.toList();
@@ -1029,7 +1029,7 @@ Future<int> _locked(
                 '${left == 0 ? '' : '; $left cannot be built in '
                           '(${built.reasons})'}'
                 '${unsettled == 0 ? '' : '; $unsettled not killed that way '
-                          'are measured the usual way'}'
+                          'get a start of their own'}'
                 '${outcome.unended == 0 ? '' : '; ${outcome.unended} of '
                           'them did not end, and the test run was ended'}'
                 '${outcome.heavy == 0 ? '' : '; with ${outcome.heavy} of '
@@ -1064,8 +1064,9 @@ Future<int> _locked(
                 fromDriver = const [];
                 left = pending;
                 io.err(
-                  '$executable run: $path: the tests do not pass the usual way '
-                  'in a working copy; nothing of the driver is used',
+                  '$executable run: $path: the tests do not pass with a start '
+                  'of the test runner of their own in a working copy; nothing '
+                  'of the shared start is used',
                 );
               }
             }

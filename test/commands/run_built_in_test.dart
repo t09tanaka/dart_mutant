@@ -427,7 +427,7 @@ dev_dependencies:
       builtInLine('lib/sum.dart'),
       matches(
         r'^  lib/sum\.dart: \d+ killed with the mutants built in; \d+ not '
-        r'killed that way are measured the usual way; 1 of them did not '
+        r'killed that way get a start of their own; 1 of them did not '
         r'end, and the test run was ended$',
       ),
     );
@@ -476,7 +476,7 @@ dev_dependencies:
       builtInLine('lib/hold.dart'),
       matches(
         r'^  lib/hold\.dart: \d+ killed with the mutants built in; \d+ not '
-        r'killed that way are measured the usual way; with 1 of them the '
+        r'killed that way get a start of their own; with 1 of them the '
         r'test run used too much memory, and was ended$',
       ),
     );
@@ -649,7 +649,7 @@ dev_dependencies:
     expect(
       builtInLine('lib/cases.dart'),
       '  lib/cases.dart: 1 killed with the mutants built in; 6 not killed '
-      'that way are measured the usual way',
+      'that way get a start of their own',
     );
 
     // The results are those of any run: the next one takes them over.
@@ -695,7 +695,8 @@ dev_dependencies:
       containsAllInOrder([
         'dart_mutant run: lib/pair.dart: the tests do not pass without a '
             'mutant when the mutants are built in ("after the other file" '
-            'fails); its mutants are run the usual way',
+            'fails); each of its mutants gets a start of the test runner of '
+            'its own',
         startsWith('dart_mutant run: lib/pair.dart has tests that fail in a '),
         'dart_mutant run: 1 file(s) could not be mutation tested',
         startsWith('  - lib/pair.dart: the tests fail without a mutant'),
@@ -732,7 +733,7 @@ dev_dependencies:
       expect(
         builtInLine('lib/sign.dart'),
         '  lib/sign.dart: 4 killed with the mutants built in; 1 not killed '
-        'that way are measured the usual way',
+        'that way get a start of their own',
       );
     }
     final merged = '${dir.path}/reports/merged.json';
