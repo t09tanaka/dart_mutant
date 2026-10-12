@@ -427,12 +427,15 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:test_api/backend.dart';
+import 'package:test_api/src/backend/declarer.dart';
+import 'package:test_api/src/backend/invoker.dart';
 import 'package:test_core/src/runner/engine.dart';
 import 'package:test_core/src/runner/plugin/environment.dart';
-import 'package:test_core/src/runner/reporter/direct.dart';
+import 'package:test_core/src/runner/reporter/expanded.dart';
 import 'package:test_core/src/runner/runner_suite.dart';
 import 'package:test_core/src/runner/suite.dart';
 import 'package:test_core/src/util/os.dart';
+import 'package:test_core/src/util/print_sink.dart';
 
 import 'package:p/a.dart' as target;
 import 'it\'s/b_test.dart' as tests;
@@ -471,7 +474,13 @@ Future<void> main(List<String> arguments) async {
       ),
     )
     ..suiteSink.close();
-  createDirectReporter(engine);
+  ExpandedReporter.watch(
+    engine,
+    PrintSink(),
+    color: false,
+    printPath: false,
+    printPlatform: false,
+  );
   final passed = await runZoned(
     () => Invoker.guard(engine.run),
     zoneValues: {#test.declarer: declarer},
