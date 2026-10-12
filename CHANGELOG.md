@@ -11,12 +11,18 @@
   is the default. Only `Killed` is taken from the shared start; a mutant
   no test fails on, one that does not end, and what cannot be built in get
   a start of their own, as before.
-- The statuses are those of a start per mutant. A test of this package
-  requires that of a package of tests that are easy to get wrong
+- A test of this package requires that every mutant has the status of a
+  start of its own, of a package of tests that are easy to get wrong
   (`test/fixtures/hazards`, `test/commands/hazards_test.dart`), among them
   the tests `--schemata` of 0.1.0 was withdrawn for: with an isolate per
   mutant, the mutant that empties the code that clears a list starts with
   an empty list.
+- Code of the file that runs in another isolate or process than the tests
+  is noticed: no mutant is at work there, so nothing of the shared start
+  is used for that file, and every mutant of it gets a start of its own.
+  A file that imports `dart:isolate`, or whose test does, is not built in.
+- The results of the last run say which way they were measured, and are
+  not reused by a run that measures the other way.
 - A mutant in the initializer of a top-level variable or of a `static`
   field can be built in now: the initializer runs once in an isolate, and
   every mutant has its own. In 0.1.0 these were left to a start of their
