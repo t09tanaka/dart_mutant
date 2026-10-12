@@ -1,0 +1,16 @@
+import 'dart:io';
+
+/// A file that belongs to this process: its id is in the name.
+File _ledger() => File('${Directory.systemTemp.path}/hazard_ledger_$pid.txt');
+
+void clear() {
+  if (_ledger().existsSync()) {
+    _ledger().deleteSync();
+  }
+}
+
+void enter(String line) {
+  _ledger().writeAsStringSync('$line\n', mode: FileMode.append);
+}
+
+int entries() => _ledger().readAsLinesSync().length;

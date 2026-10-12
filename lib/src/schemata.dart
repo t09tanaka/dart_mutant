@@ -94,24 +94,8 @@ String? fileObstacle(String source) {
     // The test file of a mutant imports the file to set the variable.
     return 'is a part of a library';
   }
-  if (importsIsolates(unit)) {
-    return startsIsolates;
-  }
   return null;
 }
-
-/// Why a file that imports `dart:isolate`, or whose tests do, is not run
-/// with its mutants built in.
-const startsIsolates =
-    'imports dart:isolate: an isolate that it starts does not end with the '
-    'test file of a mutant, and no mutant is at work in it';
-
-/// True when [unit] imports `dart:isolate`.
-bool importsIsolates(CompilationUnit unit) => unit.directives.any(
-  (directive) =>
-      directive is ImportDirective &&
-      directive.uri.stringValue == 'dart:isolate',
-);
 
 /// A mutant as a choice made while the program runs: the node from [offset]
 /// to [end] does what [alternative] says while the mutant [id] is at work.

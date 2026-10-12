@@ -10,10 +10,13 @@ import 'package:dart_mutant/src/args.dart';
 import 'package:dart_mutant/src/commands/run.dart';
 import 'package:test/test.dart';
 
-/// The condition under which the mutants of a file may share one start of
-/// the test runner: for a package of tests that are easy to get wrong
-/// (test/fixtures/hazards), **every mutant has the status that a start of
-/// the test runner of its own gives it**.
+/// The condition under which a mutant may be run in another way than by a
+/// start of the test runner of its own: for a package of tests that are
+/// easy to get wrong (test/fixtures/hazards), **every mutant has the status
+/// that a start of the test runner of its own gives it**.
+///
+/// By default the tests of a file are compiled once with its mutants built
+/// in, and every mutant is run by a process of its own.
 ///
 /// The files, and what each is there for:
 ///
@@ -23,7 +26,7 @@ import 'package:test/test.dart';
 ///   the clearing code failed on what the round before had left, and was
 ///   reported as killed. It was withdrawn in 0.1.1 for that.
 /// - `background`: code that runs in another isolate, where no mutant is
-///   at work. The file imports `dart:isolate`, and is not built in.
+///   at work.
 /// - `codec`: a test that compares what the code under test says here and
 ///   in another isolate, which a file starts that is neither the file
 ///   under test nor its test. `shout`: the same with another process. A
@@ -46,7 +49,12 @@ import 'package:test/test.dart';
 ///   future nobody waits for, when the test has ended, a callback that is
 ///   never called (the test waits until its time is up), and a test that
 ///   passes when it is tried again (`retry`).
-/// - `halt`: a mutant that ends the test runner itself.
+/// - `halt`: a mutant that ends the process of its tests.
+/// - `ledger`: what the tests leave behind is in a file that belongs to
+///   their process (its id is in the name), and the code under test is
+///   what clears it. Mutants that share a process, each in an isolate of
+///   its own, share that file: the mutant that empties the clearing code
+///   was killed there by what the mutant before it had left.
 typedef _Run = ({
   Map<String, List<String>> mutants,
   int exitCode,
@@ -73,57 +81,50 @@ void main() {
     'gate',
     'outside',
     'halt',
+    'ledger',
   ];
 
-  /// How the start that the mutants of each file share has to go: how many
-  /// mutants are built in, how many of them are killed there, and how many
-  /// are left for a start of their own, as the run says it. A file that is
-  /// given up has no such line, and says why.
+  /// How the mutants of each file that are built in have to go: how many
+  /// there are, how many of them are killed by a process of their own, and
+  /// how many are left for a start of the test runner, as the run says it.
+  /// A file that is given up has no such line, and says why.
   ///
   /// Both directions are held: a file that should be given up is, and a
   /// file that need not be is not run with a start per mutant after all.
   const shared = <String, String>{
     'registry': '2 of 2 built in, 1 killed there, 1 left',
     'counter': '6 of 6 built in, 4 killed there, 2 left',
-    // Two of them never end, and take the mutants since the tests last
-    // passed without a mutant with them.
-    'scales': '55 of 59 built in, 31 killed there, 24 left',
+    // Two of them never end: they are ended, and left.
+    'scales': '55 of 59 built in, 45 killed there, 10 left',
     'pending': '12 of 13 built in, 9 killed there, 3 left',
     'lease': '14 of 14 built in, 13 killed there, 1 left',
     'place': '2 of 2 built in, 2 killed there, 0 left',
     'pair': '3 of 3 built in, 3 killed there, 0 left',
     'cli': '17 of 17 built in, 12 killed there, 5 left',
-    // Its setUpAll fails with two of them: no driver sees that, the test
-    // runner counts it, and they are left.
+    // Its setUpAll fails with two of them: the process fails, and no test
+    // of it was written down as failed.
     'gate': '4 of 5 built in, 2 killed there, 2 left',
-    // Killed there: the error nobody waits for, the callback that is not
-    // called, the count that goes down. Left: what fails while the tests
-    // are declared, in the tearDownAll, and when its test has ended, and
-    // the one survivor.
-    'outside': '12 of 12 built in, 5 killed there, 7 left',
+    // Killed there: the error nobody waits for, and the count that goes
+    // down. Left: what fails while the tests are declared, in the
+    // tearDownAll and when its test has ended, the callback that is never
+    // called (its test waits longer than the process may take), and the
+    // one survivor.
+    'outside': '12 of 12 built in, 3 killed there, 9 left',
+    // The mutants that end the process end it with 0: no test failed.
+    'halt': '8 of 9 built in, 2 killed there, 6 left',
+    'ledger': '7 of 7 built in, 4 killed there, 3 left',
   };
-  const givenUp = {
-    'background':
-        'dart_mutant run: lib/background.dart imports dart:isolate: an '
-        'isolate that it starts does not end with the test file of a '
-        'mutant, and no mutant is at work in it; each of its mutants gets '
-        'a start of the test runner of its own',
-    'codec':
-        'dart_mutant run: lib/codec.dart: code of the file ran in another '
-        'isolate or process than the tests, where no mutant is at work; '
-        'each of its mutants gets a start of the test runner of its own',
-    'shout':
-        'dart_mutant run: lib/shout.dart: code of the file ran in another '
-        'isolate or process than the tests, where no mutant is at work; '
-        'each of its mutants gets a start of the test runner of its own',
-    'halt':
-        'dart_mutant run: lib/halt.dart: the test runner did not say how '
-        'the tests ended, or its exit code says something else; each of '
-        'its mutants gets a start of the test runner of its own',
+  final givenUp = {
+    for (final name in ['background', 'codec', 'shout'])
+      name:
+          'dart_mutant run: lib/$name.dart: code of the file ran in another '
+          'isolate or process than the tests, where no mutant is at work; '
+          'each of its mutants gets a start of the test runner of its own',
   };
 
-  /// The mutants that a start they share would kill by mistake, each for
-  /// the reason its file is there for. A start of their own lets them
+  /// The mutants that would be killed by mistake if they shared an isolate
+  /// or a process, or were at work on one side only, each for the reason
+  /// its file is there for. A start of their own lets them
   /// survive, and that is the result.
   const survivors = [
     // Empties the code that clears what the tests leave behind.
@@ -136,6 +137,10 @@ void main() {
     'lib/shout.dart#? MethodExpression toLowerCase 1:35-1:46',
     // No test calls it: it can only fail on what another mutant left.
     'lib/cli.dart#? NumberLiteral 8 14:16-14:17',
+    // Empty or switch off the code that removes the file of the process.
+    'lib/ledger.dart#1 BlockStatement {} 6:14-10:2',
+    'lib/ledger.dart#3 ConditionalExpression false 7:7-7:29',
+    'lib/ledger.dart#4 BlockStatement {} 7:31-9:4',
   ];
 
   /// The mutants of the package, by file, each as `id mutator replacement
@@ -238,7 +243,16 @@ dev_dependencies:
     together = await mutate(oneByOne: false);
   });
 
-  tearDownAll(() => dir.deleteSync(recursive: true));
+  tearDownAll(() {
+    dir.deleteSync(recursive: true);
+    // What the tests of `ledger` left, one file per process.
+    for (final entity in Directory.systemTemp.listSync()) {
+      if (entity is File &&
+          entity.uri.pathSegments.last.startsWith('hazard_ledger_')) {
+        entity.deleteSync();
+      }
+    }
+  });
 
   test('every file of the package is in both reports, and the run with a '
       'start per mutant builds nothing in', () {
@@ -264,8 +278,8 @@ dev_dependencies:
     expect(together.exitCode, 1);
   });
 
-  test('the mutants that a start they share would kill by mistake survive '
-      'a start of their own', () {
+  test('the mutants that sharing would kill by mistake survive a start of '
+      'the test runner of their own', () {
     final all = [for (final mutants in usual.mutants.values) ...mutants];
     for (final survivor in survivors) {
       final pattern = RegExp(
@@ -279,9 +293,9 @@ dev_dependencies:
     }
   });
 
-  test('how the start that the mutants of a file share went: how many '
-      'mutants were built in, killed there, and left for a start of their '
-      'own', () {
+  test('how the mutants that were built in went: how many there were, how '
+      'many were killed by a process of their own, and how many were left '
+      'for a start of the test runner', () {
     final went = <String, String>{};
     for (final name in files) {
       final builtIn = RegExp(
@@ -304,9 +318,8 @@ dev_dependencies:
     expect(went, shared, reason: together.lines.join('\n'));
   });
 
-  test('the files whose code runs where no mutant is at work, and the one '
-      'that ends the test runner, are given up, and say so; no other file '
-      'is', () {
+  test('the files whose code runs where no mutant is at work are given up, '
+      'and say so; no other file is', () {
     for (final MapEntry(key: name, value: line) in givenUp.entries) {
       expect(together.lines, contains(line), reason: name);
       expect(

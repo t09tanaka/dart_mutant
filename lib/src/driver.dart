@@ -4,32 +4,19 @@ import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 
 import 'json.dart';
-import 'mutation_run.dart';
 import 'schemata.dart';
 
 /// How many mutants are run between two runs of the tests without a mutant
 /// (see [planOf]).
 const mutantsBetweenChecks = 25;
 
-/// What the name of a test file that runs the tests on one mutant starts
-/// with.
-const driverPrefix = 'dart_mutant_';
+/// What the name of a driver starts with: the program that runs a test
+/// file of a file on one of its built-in mutants.
+const driverPrefix = 'dart_mutant_driver_';
 
-/// The name of the test file that runs test file number [test] of a file
-/// for position [position] of a plan (see [planOf]).
-String driverNameOf(int position, int test) =>
-    '$driverPrefix${position}_${test}_test.dart';
-
-final _driverName = RegExp(
-  '(?:^|[/\\\\])$driverPrefix(\\d+)_\\d+_test\\.dart\$',
-);
-
-/// The position of a plan that the test file at [path] is for, or `null`
-/// when it is none of [driverNameOf].
-int? positionOf(String path) {
-  final match = _driverName.firstMatch(path);
-  return match == null ? null : int.parse(match.group(1)!);
-}
+/// The name of the driver of test file number [test] of a file. It is no
+/// test file: the test runner does not pick it up.
+String driverNameOf(int test) => '$driverPrefix$test.dart';
 
 final _pubspecName = RegExp(r'''^name:\s*['"]?([A-Za-z_][A-Za-z0-9_]*)''');
 
@@ -78,20 +65,16 @@ String directoryOf(String path) =>
 String dartString(String text) =>
     "'${text.replaceAll(r'\', r'\\').replaceAll("'", r"\'").replaceAll(r'$', r'\$').replaceAll('\n', r'\n').replaceAll('\r', r'\r')}'";
 
-/// Why the tests in [test] (the source of a test file) cannot be run by the
+/// Why the tests in [test] (the source of a test file) cannot be run by a
 /// driver, or `null` when they can: the driver calls `main()` of the file
-/// from its own `main()`, with a mutant at work.
+/// from its own `main()`, with a mutant at work, in a process without the
+/// test runner.
 ///
 /// - `main` has to be there, take no argument and not be `async`.
 /// - An annotation on the library (`@Timeout`, `@TestOn`, `@Retry`, `@Tags`,
-///   `@Skip`) is for the test runner, which would not see it on the driver.
-/// - A test file that imports `dart:isolate` starts isolates of its own:
-///   they do not end with the driver, and no mutant is at work in them.
+///   `@Skip`) is for the test runner, which is not there.
 String? driverObstacle(String test) {
   final unit = parseString(content: test, throwIfDiagnostics: false).unit;
-  if (importsIsolates(unit)) {
-    return startsIsolates;
-  }
   final annotated = [
     for (final directive in unit.directives)
       if (directive.metadata.isNotEmpty) directive,
@@ -116,9 +99,8 @@ String? driverObstacle(String test) {
 }
 
 /// Why the test files [tests] (path → source) cannot be run by drivers, or
-/// `null` when they can. The drivers are put next to them, so that what the
-/// test runner does for a directory (`flutter_test_config.dart`, the place
-/// of golden files) is done for them; they have to be in one directory, in
+/// `null` when they can. The drivers are put next to them, so that they
+/// import what the test files import; they have to be in one directory, in
 /// which no file has a name that a driver could have ([taken]).
 String? testsObstacle(Map<String, String> tests, {required bool taken}) {
   if ({for (final test in tests.keys) directoryOf(test)}.length != 1) {
@@ -136,40 +118,59 @@ String? testsObstacle(Map<String, String> tests, {required bool taken}) {
   return null;
 }
 
-/// Where the driver for position [position] and test file number [test] of
-/// the test files [tests] is put: next to them.
-String driverPathOf(List<String> tests, int position, int test) {
+final _tagLine = RegExp(r'^(tags:|\s+[A-Za-z_][A-Za-z0-9_-]*:)\s*(#.*)?$');
+final _noLine = RegExp(r'^\s*(#.*)?$');
+
+/// Why a package whose `dart_test.yaml` is [config] (`null` when it has
+/// none) is not run by drivers, or `null` when it can be. A driver runs the
+/// tests without the test runner, which is what reads that file: it may
+/// only name tags, which change nothing about how a test runs. Anything
+/// else in it (a timeout, `retry`, a tag with settings, platforms) would be
+/// in force for a mutant with a start of the test runner of its own, and
+/// not here.
+String? configObstacle(String? config) =>
+    config == null ||
+        config
+            .split('\n')
+            .every((line) => _tagLine.hasMatch(line) || _noLine.hasMatch(line))
+    ? null
+    : 'has a dart_test.yaml that says more than the names of tags, which '
+          'only the test runner reads';
+
+/// Where the driver of test file number [test] of the test files [tests]
+/// is put: next to them.
+String driverPathOf(List<String> tests, int test) {
   final directory = directoryOf(tests.first);
-  final name = driverNameOf(position, test);
+  final name = driverNameOf(test);
   return directory.isEmpty ? name : '$directory/$name';
 }
 
-/// [command] for the test files [drivers]: a test gets the time it gets the
-/// usual way, and the test files are loaded and run one after the other,
-/// in this order. The run is not ended at the first failing test: that is
-/// the test of one mutant.
-///
-/// What a test did is not read from the output of this command: every
-/// driver writes it down itself ([driverSource]). The output, one line per
-/// test with the number of tests that failed so far, is what the test
-/// runner says for itself, and the two have to agree ([DriverLog.result]).
-List<String> driverCommand(List<String> command, List<String> drivers) => [
-  ...command,
-  '--timeout',
-  '${perTestTimeoutSeconds}s',
-  '--concurrency',
-  '1',
-  '--reporter',
-  'expanded',
-  ...drivers,
+/// What starts Dart programs, given the command that runs test files:
+/// [command] without its `test` at the end (`dart test` → `dart`, `fvm dart
+/// test` → `fvm dart`). `null` for a command of another form (`flutter test
+/// --no-pub`, `dart test -p chrome`): its tests cannot be run as a program
+/// of their own.
+List<String>? dartOf(List<String> command) =>
+    command.length > 1 && command.last == 'test'
+    ? command.sublist(0, command.length - 1)
+    : null;
+
+/// The command that compiles the driver [driver] once, to [program].
+List<String> compileCommand(List<String> dart, String driver, String program) =>
+    [...dart, 'compile', 'kernel', driver, '-o', program];
+
+/// The command that runs the compiled driver [program] on the mutant [id]
+/// ([noMutant] for none), in a process of its own.
+List<String> driverCommand(List<String> dart, String program, int id) => [
+  ...dart,
+  program,
+  '$id',
 ];
 
-/// The library that declares `setUp` and `tearDown` for the tests of a
-/// package with the package configuration [packageConfig]: of
-/// `flutter_test` for a Flutter package ([flutter]), else of `test`. `null`
-/// when the package has neither, or does not have `test_api`, from which a
-/// driver reads how a test went.
-String? testLibraryOf(String? packageConfig, {required bool flutter}) {
+/// `package:test/test.dart` when the package with the package configuration
+/// [packageConfig] has `test`, and `test_api`, from which a driver reads
+/// how a test went; else `null`.
+String? testLibraryOf(String? packageConfig) {
   if (packageConfig == null) {
     return null;
   }
@@ -184,60 +185,64 @@ String? testLibraryOf(String? packageConfig, {required bool flutter}) {
     if (packages is List)
       for (final package in packages) asObject(package)?['name'],
   };
-  if (!names.contains('test_api')) {
-    return null;
-  }
-  if (flutter && names.contains('flutter_test')) {
-    return 'package:flutter_test/flutter_test.dart';
-  }
-  return names.contains('test') ? 'package:test/test.dart' : null;
+  return names.contains('test') && names.contains('test_api')
+      ? 'package:test/test.dart'
+      : null;
 }
 
-/// The test file that runs the tests of [test] (as it imports it) on the
-/// mutant [id] of [target] (as it imports it), or without a mutant for
-/// [noMutant]: the driver of test file number [index] for the position
-/// [position] of a plan.
+/// The program that runs the tests of [test] (as it imports it) on a
+/// mutant of [target] (as it imports it): the driver of test file number
+/// [index]. It is compiled once and started once per mutant, with the
+/// number of the mutant as its argument ([noMutant] for none), each time
+/// as **a process of its own**.
 ///
-/// The test runner gives every test file an isolate of its own, so nothing
-/// of the program is shared between two mutants: the mutant is at work
-/// before the first line of the tests and of the file under test runs, as
-/// in a process that has just started with that mutant in the file.
+/// So nothing is shared between two mutants that a start of the test
+/// runner per mutant does not share either: not the program, and not what
+/// a process has beside it (its id, its current directory, its exit code,
+/// what native code keeps). The mutant is at work before the first line of
+/// the tests and of the file under test runs.
+///
+/// The tests are run by `package:test` itself, as it runs a test file that
+/// is started as a program: without the test runner, so without what only
+/// the test runner reads (see [configObstacle] and [driverObstacle]).
 ///
 /// **The driver writes down itself what its tests did**, one line each, at
 /// the end of the file `log` in [state] (an absolute directory); see
-/// [DriverLog.record] for the lines. Nothing a test prints can be taken
-/// for one of them.
+/// [outcomeOf] for the lines. Nothing a test prints can be taken for one
+/// of them, and nothing the process prints is read.
 ///
 /// - `load` before the tests are declared and `declared` after: a test
 ///   file whose `main()` throws has the first and not the second.
 /// - After every run of a test, when its `tearDown`s have run, `pass` or
-///   `fail` with a number for the test. The test runner knows how the test
-///   went so far, and the driver asks it (`Invoker` of `package:test_api`,
-///   which is not part of its API; a version in which that is gone does
-///   not compile, and then no test file of the plan is loaded).
-/// - A test is not run when the file `killed/<id>` is there: a test of
-///   that mutant failed, which is all there is to know about it. The
-///   driver makes that file when a test fails, and takes it away when the
-///   same test then passes (`retry`). A test that is not run is `skip`.
+///   `fail` with a number for the test. The test framework knows how the
+///   test went so far, and the driver asks it (`Invoker` of
+///   `package:test_api`, which is not part of its API; with a version in
+///   which that is gone the driver does not compile, and no mutant is run
+///   this way).
+/// - After a test of a mutant failed for good, the other tests are not
+///   run: that is all there is to know about the mutant. A test that is
+///   not run is `skip`. (A test that fails and is tried again, `retry`,
+///   has not failed for good.)
 ///
-/// A process shares its current directory and its exit code between its
-/// isolates. The first driver notes the directory in the file `cwd` in
-/// [state], and every driver starts in that directory and with the exit
-/// code 0.
+/// - When all tests have run and none has failed for good, the process is
+///   ended with the exit code 0 a moment later. The test runner ends the
+///   isolate of a test file when its tests have run; a program goes on for
+///   as long as a test left a timer or a port behind. (When a test failed,
+///   `package:test` ends the process itself, with another exit code. That
+///   also happens within the moment when something failed that no test
+///   saw.)
 ///
-/// [testLibrary] is what declares `setUp` in the package:
-/// `package:test/test.dart` or `package:flutter_test/flutter_test.dart`.
+/// [testLibrary] is what declares `setUp` in the package.
 String driverSource({
   required String testLibrary,
   required String target,
   required String test,
-  required int position,
   required int index,
-  required int id,
   required String state,
 }) =>
     '''
 // Written by dart_mutant for one run, and removed with it.
+import 'dart:async';
 import 'dart:io';
 
 import ${dartString(testLibrary)};
@@ -249,30 +254,27 @@ import ${dartString(test)} as tests;
 const _state = ${dartString(state)};
 
 void _note(String what, [int? test]) => File('\$_state/log').writeAsStringSync(
-  '\$what $position $index \${test == null ? '' : '\$test '}'
-  '\${DateTime.now().millisecondsSinceEpoch}\\n',
+  '\$what $index\${test == null ? '' : ' \$test'}\\n',
   mode: FileMode.append,
 );
 
-void main() {
-  final cwd = File('\$_state/cwd');
-  if (cwd.existsSync()) {
-    Directory.current = cwd.readAsStringSync();
-  } else {
-    cwd.writeAsStringSync(Directory.current.path, flush: true);
-  }
-  exitCode = 0;
-  target.$switchName = $id;
+void main(List<String> arguments) {
+  final id = int.parse(arguments.single);
+  target.$switchName = id;
   _note('load');
   final numbers = Expando<int>();
   var count = 0;
-  final killed = File('\$_state/killed/$id');
   Object? failed;
   Object? skipped;
+  tearDownAll(() {
+    if (failed == null) {
+      Timer(const Duration(milliseconds: 200), () => exit(0));
+    }
+  });
   setUp(() {
     final test = Invoker.current!.liveTest;
     numbers[test] ??= count++;
-    if ($id != $noMutant && !identical(failed, test) && killed.existsSync()) {
+    if (id != $noMutant && failed != null && !identical(failed, test)) {
       skipped = test;
       _note('skip', numbers[test]);
       throw StateError('dart_mutant: not run, a test before it failed');
@@ -287,14 +289,10 @@ void main() {
       _note('pass', numbers[test]);
       if (identical(failed, test)) {
         failed = null;
-        if (killed.existsSync()) {
-          killed.deleteSync();
-        }
       }
     } else {
       _note('fail', numbers[test]);
       failed = test;
-      killed.createSync();
     }
   });
   tests.main();
@@ -306,10 +304,10 @@ void main() {
 /// mutant first, after every [mutantsBetweenChecks] mutants, and at the
 /// end. A position of the plan is one mutant, or the tests without one.
 ///
-/// The first run shows that the tests pass with the mutants built in, and
-/// gives the time and the memory a run takes. The later ones show that the
-/// tests still pass after the mutants before them: the isolates of one
-/// process share nothing of the program, but the files a test writes stay.
+/// The first run shows that the tests pass as a program of their own with
+/// the mutants built in, and gives the time and the memory a run takes.
+/// The later ones show that the tests still pass after the mutants before
+/// them: the processes share nothing, but the files a test writes stay.
 List<int> planOf(List<int> ids) => [
   noMutant,
   for (final (index, id) in ids.indexed) ...[
@@ -319,35 +317,110 @@ List<int> planOf(List<int> ids) => [
   ],
 ];
 
-/// Why nothing of a test run is used when it was ended while the tests ran
-/// without a mutant.
+/// Why nothing of the drivers of a file is used when a limit ended the
+/// tests without a mutant.
 const notEndedWithoutMutant = 'the tests did not end without a mutant';
 
-/// Why nothing of a test run is used when the test runner ended by itself
-/// without saying how many tests failed, or with an exit code that says
-/// something else.
-const noVerdict =
-    'the test runner did not say how the tests ended, or its exit code '
-    'says something else';
+/// Why nothing of the drivers of a file is used when the tests without a
+/// mutant did not pass in them.
+const notPassingWithoutMutant =
+    'the tests do not pass without a mutant when they are run as a program '
+    'of their own, with the mutants built in';
 
-/// What the test runner says of a test file it starts on, in front of its
-/// path.
-const _loading = 'loading ';
+/// What the drivers of one position of a plan did: one process per test
+/// file, in the order of the test files, until one of them failed.
+class Ran {
+  const Ran({required this.exitCodes, required this.notes, this.ended = false});
 
-/// A line of the test runner about a test: the time, how many tests have
-/// passed, been skipped and failed so far, and then what it is about.
-final _progress = RegExp(r'^\d+:\d+ \+\d+(?: ~\d+)?(?: -(\d+))?: (.*)$');
+  /// The exit code of each process that was started and ended by itself.
+  final List<int> exitCodes;
 
-/// What is known of the drivers of a plan while their test run goes on and
-/// when it has ended, from two sides that have to agree:
+  /// What the drivers wrote down, line by line: `load`, `declared`, `pass`,
+  /// `fail` or `skip`, the number of the test file, and for the last three
+  /// the number of the test.
+  final List<String> notes;
+
+  /// True when a limit of time or of memory ended a process.
+  final bool ended;
+}
+
+/// What is known of a position.
+enum Outcome {
+  /// Every test of every test file passed, on both sides.
+  passed,
+
+  /// A test failed, on both sides.
+  failed,
+
+  /// Neither: the two sides do not agree, a test file could not declare
+  /// its tests, or a limit ended a process.
+  undecided,
+}
+
+/// What [ran] says of a position with [tests] test files, and how many
+/// tests were run in it, from two sides that have to agree:
 ///
-/// - what the drivers wrote down themselves ([record]): which test files
-///   were loaded and declared their tests, and how each test went;
-/// - what the test runner says for itself ([output]): how many tests had
-///   failed when it started on a position, and at the end.
+/// - what the drivers wrote down: which test files declared their tests,
+///   and how the last run of each test went;
+/// - the exit code of each process: 0 when every test passed.
 ///
-/// How a test went is only ever taken from the first. The second cannot be
-/// taken for it: it is a count, not a test.
+/// **A test failed** when a driver wrote down that it did, after declaring
+/// its tests, and its process ended with another exit code than 0. A
+/// failure that only one side has is none: a process that fails without a
+/// test of it having failed (a `setUpAll` or `tearDownAll`, an error that
+/// arrives when its test has ended, a test file that cannot declare its
+/// tests, a test that ends the process), or a test that fails where the
+/// process ends with 0.
+///
+/// **All tests passed** when every test file had its process, each ended
+/// with 0 and declared its tests, and no test failed or was left out.
+({Outcome outcome, int tests}) outcomeOf(Ran ran, {required int tests}) {
+  final declared = <int>{};
+  final last = <(int, int), String>{};
+  for (final line in ran.notes) {
+    final words = line.split(' ');
+    final numbers = [for (final word in words.skip(1)) int.tryParse(word)];
+    switch ((words.first, numbers)) {
+      case ('declared', [final int file]):
+        declared.add(file);
+      case ('pass' || 'fail' || 'skip', [final int file, final int test]):
+        last[(file, test)] = words.first;
+    }
+  }
+  bool ended(int file) => file < ran.exitCodes.length;
+  final failed = [
+    for (final MapEntry(key: (file, _), value: how) in last.entries)
+      if (how == 'fail' &&
+          declared.contains(file) &&
+          ended(file) &&
+          ran.exitCodes[file] != 0)
+        file,
+  ];
+  final clean =
+      ran.exitCodes.length == tests &&
+      ran.exitCodes.every((code) => code == 0) &&
+      declared.length == tests &&
+      last.values.every((how) => how == 'pass');
+  return (
+    outcome: ran.ended
+        ? Outcome.undecided
+        : failed.isNotEmpty
+        ? Outcome.failed
+        : clean
+        ? Outcome.passed
+        : Outcome.undecided,
+    tests: last.length,
+  );
+}
+
+/// What the drivers of a plan have shown so far, position by position.
+///
+/// A mutant counts as killed when a test failed on it ([Outcome.failed])
+/// and the tests without a mutant passed afterwards. The tests without a
+/// mutant passed when all of them did ([Outcome.passed]) and as many were
+/// run as the first time. When they did not, nothing of the drivers is
+/// used ([failure]). Every other mutant is run the usual way
+/// ([DriverResult.again]).
 class DriverLog {
   DriverLog(this.plan, {required this.tests});
 
@@ -357,245 +430,69 @@ class DriverLog {
   /// How many test files a position has.
   final int tests;
 
-  /// The positions of which a driver was started, and when the first one
-  /// was (milliseconds since the epoch, as the driver wrote it).
-  final started = <int, int>{};
+  final _killed = <int, int>{};
+  final _again = <int>[];
 
-  /// The test files of each position that declared their tests.
-  final _declared = <int, Set<int>>{};
+  /// The mutants a test failed on since the tests last passed without a
+  /// mutant, with the milliseconds their tests took.
+  var _open = <int, int>{};
 
-  /// How the last run of each test went: `pass`, `fail` or `skip`, by
-  /// position, test file and number of the test.
-  final _outcomes = <(int, int, int), String>{};
+  int? _testsWithoutMutant;
+  var _next = 0;
 
-  /// The time of the last line of a driver.
-  var time = 0;
+  /// Why nothing of the drivers can be used, when that is so.
+  String? failure;
 
-  /// How many tests had failed, as the test runner counts them, when it
-  /// started on each position.
-  final _failedBefore = <int, int>{};
+  /// The position that is run next, or `null` when the plan is done or
+  /// has failed.
+  int? get next => failure == null && _next < plan.length ? _next : null;
 
-  /// How many tests had failed when the test runner had run everything, or
-  /// `null` while it has not said so.
-  int? failedAtEnd;
-
-  /// True when the test runner said it has run everything.
-  bool get done => failedAtEnd != null;
-
-  /// The position that is at work: the one whose first driver was started
-  /// last. The test files are loaded and run one after the other.
-  int? get current => started.isEmpty ? null : started.keys.last;
-
-  /// Takes a line that a driver wrote: `load`, `declared`, `pass`, `fail`
-  /// or `skip`, the position, the number of the test file, for the last
-  /// three the number of the test, and the time. A line that is anything
-  /// else (half written, of a position the plan does not have) is passed
-  /// over.
-  void record(String line) {
-    final words = line.split(' ');
-    final numbers = [for (final word in words.skip(1)) int.tryParse(word)];
-    switch ((words.first, numbers)) {
-      case (
-            'load' || 'declared',
-            [final int position, final int file, final int at],
-          )
-          when position >= 0 &&
-              position < plan.length &&
-              file >= 0 &&
-              file < tests:
-        time = at;
-        if (words.first == 'load') {
-          started.putIfAbsent(position, () => at);
-        } else {
-          _declared.putIfAbsent(position, () => {}).add(file);
-        }
-      case (
-            'pass' || 'fail' || 'skip',
-            [final int position, final int file, final int test, final int at],
-          )
-          when started.containsKey(position) && file >= 0 && file < tests:
-        time = at;
-        _outcomes[(position, file, test)] = words.first;
-    }
-  }
-
-  /// Takes a line of the output of the test runner. Only what it says of
-  /// its own count is read: `… -3: loading <driver>` (three tests had
-  /// failed when it started on that position) and `… -5: Some tests
-  /// failed.` or `…: All tests passed!` at the end.
-  void output(String line) {
-    final match = _progress.firstMatch(line);
-    if (match == null) {
+  /// Takes what the drivers of the position [next] did, in
+  /// [milliseconds].
+  void add(Ran ran, {required int milliseconds}) {
+    final id = plan[_next++];
+    final (:outcome, tests: count) = outcomeOf(ran, tests: tests);
+    if (id != noMutant) {
+      if (outcome == Outcome.failed) {
+        _open[id] = milliseconds;
+      } else {
+        _again.add(id);
+      }
       return;
     }
-    final failed = int.parse(match.group(1) ?? '0');
-    final about = match.group(2)!;
-    if (about == 'Some tests failed.' || about == 'All tests passed!') {
-      failedAtEnd = failed;
-    } else if (about.startsWith(_loading)) {
-      final position = positionOf(about.replaceFirst(_loading, ''));
-      if (position != null) {
-        _failedBefore.putIfAbsent(position, () => failed);
-      }
+    if (ran.ended) {
+      failure = notEndedWithoutMutant;
+    } else if (outcome != Outcome.passed ||
+        count == 0 ||
+        count != (_testsWithoutMutant ??= count)) {
+      failure = notPassingWithoutMutant;
+    } else {
+      _killed.addAll(_open);
+      _open = {};
     }
   }
 
-  /// How many tests of [position] failed as the test runner counts them,
-  /// or `null` while it has not gone on to the next position or to the
-  /// end.
-  int? _failedByRunner(int position) {
-    final before = _failedBefore[position];
-    final after = position + 1 == plan.length
-        ? failedAtEnd
-        : _failedBefore[position + 1];
-    return before == null || after == null ? null : after - before;
-  }
-
-  Iterable<String> _outcomesOf(int position) => [
-    for (final MapEntry(key: (at, _, _), :value) in _outcomes.entries)
-      if (at == position) value,
-  ];
-
-  /// How many tests of [position] failed as its drivers wrote it down: the
-  /// tests that failed, and the ones that were not run because one had
-  /// failed. (A test file that could not declare its tests is one more for
-  /// the test runner; such a position does not count anyway.)
-  int _failedByDrivers(int position) =>
-      _outcomesOf(position).where((outcome) => outcome != 'pass').length;
-
-  /// How many tests of [position] were run, or left out.
-  int _ran(int position) => _outcomesOf(position).length;
-
-  /// How long [position] took, in milliseconds: from the start of its
-  /// first driver to the start of the next position that has one, or to
-  /// the last line of a driver.
-  int millisecondsOf(int position) {
-    final from = started[position];
-    if (from == null) {
-      return 0;
-    }
-    final later = [
-      for (final MapEntry(:key, :value) in started.entries)
-        if (key > position) value,
-    ];
-    return (later.isEmpty ? time : later.first) - from;
-  }
-
-  /// How long the position that is at work may be at work, given how long a
-  /// test run may take after one that took a given time ([limitOf]) and how
-  /// long the first one may take ([first]).
-  ///
-  /// The first position, the tests without a mutant, takes the place of
-  /// the run without a mutant of the usual way, and the compiler and the
-  /// test runner start with it: it gets [first]. Every later position gets
-  /// what [limitOf] makes of the time of that first one.
-  Duration limit(
-    Duration Function(Duration baseline) limitOf, {
-    required Duration first,
-  }) => started.length < 2
-      ? first
-      : limitOf(Duration(milliseconds: millisecondsOf(0)));
-
-  var _memoryWithoutMutant = 0;
-
-  /// How much memory the test run may hold now, in kilobytes, when the
-  /// most it has held so far is [peak], or `null` for as much as it takes.
-  ///
-  /// While the first position is at work (the compiler starts, and the
-  /// tests run without a mutant for the first time) there is no limit, and
-  /// [peak] is what a run without a mutant takes. Every later position
-  /// gets what [limitOf] makes of that.
-  int? memoryLimit(int peak, int Function(int baseline) limitOf) {
-    if (started.length < 2) {
-      _memoryWithoutMutant = peak;
-      return null;
-    }
-    return limitOf(_memoryWithoutMutant);
-  }
-
-  /// What is known when the test run has ended, or was ended.
-  ///
-  /// A position counts when the test runner has gone on from it, and only
-  /// when the two sides agree on it: as many tests failed in it as its
-  /// drivers wrote down. A failure that no driver saw (in a `setUpAll` or
-  /// a `tearDownAll`, an error that arrives when its test has ended) is
-  /// one more on the side of the test runner.
-  ///
-  /// - The tests without a mutant passed when every driver declared its
-  ///   tests, as many tests ran as the first time, and no test failed on
-  ///   either side. Anything else, and nothing of the test run is used.
-  /// - A mutant is killed when a driver wrote down that a test failed on
-  ///   it, the two sides agree, and the tests without a mutant passed
-  ///   afterwards.
-  /// - Every other mutant is not decided here: it is run the usual way
-  ///   ([DriverResult.again]) or by the next test run
-  ///   ([DriverResult.rest]).
-  DriverResult get result {
-    if (started.isEmpty) {
-      return const DriverResult(
-        failure: 'the file with its mutants built in cannot be loaded',
-      );
-    }
-    final killed = <int, int>{};
-    final again = <int>[];
-    var open = <int>[];
-    for (final (position, id) in plan.indexed) {
-      final failed = _failedByRunner(position);
-      if (failed == null) {
-        // Where the test run was when it ended.
-        if (id == noMutant) {
-          return const DriverResult(failure: notEndedWithoutMutant);
-        }
-        final ran = {for (final position in open) plan[position]};
-        return DriverResult(
-          killed: killed,
-          again: [...again, ...ran, id],
-          rest: [
-            for (final later in plan.skip(position + 1))
-              if (later != noMutant) later,
+  /// What is known when the drivers have run, or when the run was stopped:
+  /// the mutants since the tests last passed without a mutant, and the
+  /// ones that were not run, are for the usual way.
+  DriverResult get result => failure != null
+      ? DriverResult(failure: failure)
+      : DriverResult(
+          killed: _killed,
+          again: [
+            ..._again,
+            ..._open.keys,
+            for (final id in plan.skip(_next))
+              if (id != noMutant) id,
           ],
         );
-      }
-      final declared = _declared[position]?.length == tests;
-      final agreed = failed == _failedByDrivers(position);
-      if (id != noMutant) {
-        open.add(position);
-      } else if (!declared ||
-          failed != 0 ||
-          !agreed ||
-          _ran(0) == 0 ||
-          _ran(position) != _ran(0)) {
-        return const DriverResult(
-          failure:
-              'the tests do not pass without a mutant when the mutants are '
-              'built in',
-        );
-      } else {
-        for (final mutant in open) {
-          // A test file that cannot declare its tests with a mutant at
-          // work says nothing here: the usual way tells a mutant that
-          // does not compile from one that fails.
-          if (_outcomesOf(mutant).contains('fail') &&
-              _declared[mutant]?.length == tests &&
-              _failedByRunner(mutant) == _failedByDrivers(mutant)) {
-            killed[plan[mutant]] = millisecondsOf(mutant);
-          } else {
-            again.add(plan[mutant]);
-          }
-        }
-        open = [];
-      }
-    }
-    return DriverResult(killed: killed, again: again);
-  }
 }
 
-/// What a test run of the drivers found out.
+/// What the drivers of a file found out.
 class DriverResult {
   const DriverResult({
     this.killed = const {},
     this.again = const [],
-    this.rest = const [],
     this.failure,
   });
 
@@ -604,15 +501,11 @@ class DriverResult {
   final Map<int, int> killed;
 
   /// The mutants that have to be run the usual way: no test failed on
-  /// them, their tests did not end or could not be declared, the test
-  /// runner counted other failures than their drivers, or the test run
-  /// ended before the tests without a mutant had passed after them.
+  /// them, the two sides did not agree, a limit ended them, or the tests
+  /// without a mutant had not passed after them.
   final List<int> again;
 
-  /// The mutants the test run did not get to: for the next one.
-  final List<int> rest;
-
-  /// Why nothing the test run reported can be used, when that is so: the
+  /// Why nothing the drivers showed can be used, when that is so: the
   /// tests do not run this way.
   final String? failure;
 }

@@ -720,12 +720,37 @@ Future<int> _locked(
   } on FileSystemException {
     // The obstacle below.
   }
-  // What declares `setUp` for the test file of a mutant. A package that
-  // has neither is run one by one, as with --one-by-one.
-  final testLibrary = testLibraryOf(packageConfig, flutter: flutter);
+  final command = testCommandFor(flutter: flutter, override: args.command);
+  final shown = command.join(' ');
+  // What it takes to run the tests of a file as a program of their own,
+  // once per built-in mutant: `package:test` and `package:test_api` in the
+  // package, and a test command of the form `dart test`. A package that
+  // lacks one of them (a Flutter package: its tests need `flutter test`)
+  // is run one by one, as with --one-by-one.
+  final testLibrary = testLibraryOf(packageConfig);
+  final dart = dartOf(command);
   // With the mutants built in, every test run is in a working copy, also
   // when they are run one at a time.
-  var schemata = (args.schemata ?? schemataByDefault) && testLibrary != null;
+  var schemata =
+      (args.schemata ?? schemataByDefault) &&
+      testLibrary != null &&
+      dart != null;
+  if (schemata) {
+    String? config;
+    try {
+      config = readText(_inPackage(root, 'dart_test.yaml'));
+    } on FileSystemException {
+      // None: nothing that only the test runner would read.
+    }
+    final obstacle = configObstacle(config);
+    if (obstacle != null) {
+      io.err(
+        '$executable run: the package $obstacle; each mutant gets a start '
+        'of the test runner of its own',
+      );
+      schemata = false;
+    }
+  }
   if (jobs > 1 || schemata) {
     final obstacle = copyObstacle(
       root: root,
@@ -748,8 +773,6 @@ Future<int> _locked(
       : null;
   // True once a file of the package was written by this run.
   var inPlace = false;
-  final command = testCommandFor(flutter: flutter, override: args.command);
-  final shown = command.join(' ');
   // With --force nothing of the last run is reused for the files of this
   // run; what it found for the others stays in the file.
   final carried = carriedResults(
@@ -966,8 +989,8 @@ Future<int> _locked(
           );
         }
         if (instead == null && built != null && built.ids.isNotEmpty) {
-          // One test run has to start, compile and run the tests without a
-          // mutant before its first mutant: more of them only pay when
+          // In every working copy the tests are compiled and run without
+          // a mutant before the first mutant: more copies only pay when
           // each has enough to do.
           final drivers = min(
             copies.jobs,
@@ -982,8 +1005,8 @@ Future<int> _locked(
           if (used != null) {
             io.out(
               '  $path: ${built.ids.length} of ${mutants.length} mutant(s) '
-              'built in, each run by a test file of its own, with '
-              '"${driverCommand(command, const []).join(' ')}"'
+              'built in, each run by a process of its own, with '
+              '"${dart!.join(' ')} <the tests, compiled once> <mutant>"'
               '${drivers == 1 ? '' : ', $drivers at a time'}'
               '${said ? '' : ' ($refused do not compile)'}',
             );
@@ -998,7 +1021,7 @@ Future<int> _locked(
               guardAt: built.guardAt,
               ids: built.ids,
               tests: target.tests,
-              command: command,
+              dart: dart,
               testLibrary: testLibrary!,
               package: packageNameOf(pubspec),
               limitOf: limitOf,
@@ -1033,10 +1056,9 @@ Future<int> _locked(
                 '${unsettled == 0 ? '' : '; $unsettled not killed that way '
                           'get a start of their own'}'
                 '${outcome.unended == 0 ? '' : '; ${outcome.unended} of '
-                          'them did not end, and the test run was ended'}'
-                '${outcome.heavy == 0 ? '' : '; with ${outcome.heavy} of '
-                          'them the test run used too much memory, and was '
-                          'ended'}',
+                          'them did not end, and were ended'}'
+                '${outcome.heavy == 0 ? '' : '; ${outcome.heavy} of them '
+                          'used too much memory, and were ended'}',
               );
             }
             var left = [
@@ -1068,7 +1090,7 @@ Future<int> _locked(
                 io.err(
                   '$executable run: $path: the tests do not pass with a start '
                   'of the test runner of their own in a working copy; nothing '
-                  'of the shared start is used',
+                  'of the mutants that were built in is used',
                 );
               }
             }

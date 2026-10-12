@@ -46,8 +46,7 @@ void main() {
       expect(fileObstacle('int a = ;'), isNull);
     });
 
-    test('a byte order mark, a name that is added to the file, a part, '
-        'dart:isolate', () {
+    test('a byte order mark, a name that is added to the file, a part', () {
       expect(fileObstacle('﻿int a = 1;\n'), 'starts with a byte order mark');
       expect(
         fileObstacle('int \$dartMutantActive = 1;\n'),
@@ -63,17 +62,6 @@ void main() {
         fileObstacle("part of 'a.dart';\nint a = 1;\n"),
         'is a part of a library',
       );
-      expect(
-        fileObstacle("import 'dart:isolate';\nint a = 1;\n"),
-        'imports dart:isolate: an isolate that it starts does not end with '
-        'the test file of a mutant, and no mutant is at work in it',
-      );
-      expect(
-        fileObstacle("import 'dart:io';\nimport 'dart:isolate' show Isolate;"),
-        startsIsolates,
-      );
-      expect(fileObstacle("import 'dart:io';\nexport 'dart:isolate';"), isNull);
-      expect(fileObstacle("import 'package:a/isolate.dart';"), isNull);
     });
   });
 

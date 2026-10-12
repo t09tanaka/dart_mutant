@@ -240,9 +240,9 @@ void main() {
 }
 ''';
 
-/// A run with the mutants of a file built in, each run by a test file of
-/// its own in one start of the test runner, against the real test runner,
-/// on a package in a temporary directory. That every mutant has the status
+/// A run with the mutants of a file built in, its tests compiled once and
+/// each mutant run by a process of its own, with the real `dart`, on a
+/// package in a temporary directory. That every mutant has the status
 /// of a start of its own is the subject of test/commands/hazards_test.dart.
 void main() {
   late Directory dir;
@@ -418,8 +418,8 @@ dev_dependencies:
       contains(
         matches(
           r'^  lib/sum\.dart: \d+ of \d+ mutant\(s\) built in, each run '
-          r'by a test file of its own, with ".* test --timeout 10s '
-          r'--concurrency 1 --reporter expanded"',
+          r'by a process of its own, with ".*dart <the tests, compiled '
+          r'once> <mutant>"',
         ),
       ),
     );
@@ -428,7 +428,7 @@ dev_dependencies:
       matches(
         r'^  lib/sum\.dart: \d+ killed with the mutants built in; \d+ not '
         r'killed that way get a start of their own; 1 of them did not '
-        r'end, and the test run was ended$',
+        r'end, and were ended$',
       ),
     );
     expect(err, [
@@ -476,8 +476,8 @@ dev_dependencies:
       builtInLine('lib/hold.dart'),
       matches(
         r'^  lib/hold\.dart: \d+ killed with the mutants built in; \d+ not '
-        r'killed that way get a start of their own; with 1 of them the '
-        r'test run used too much memory, and was ended$',
+        r'killed that way get a start of their own; 1 of them used too '
+        r'much memory, and were ended$',
       ),
     );
     expect(
@@ -679,9 +679,9 @@ dev_dependencies:
     );
   });
 
-  test('test files that only pass together in one isolate do not pass: '
-      'every test file has an isolate of its own, as the usual way gives '
-      'it, and the file is not tested either way', () async {
+  test('test files that only pass together do not pass: every test file '
+      'has a process of its own, and the usual way gives each an isolate '
+      'of its own; the file is not tested either way', () async {
     final builtIn = await mutate(
       'lib/pair.dart',
       schemata: true,
@@ -694,8 +694,9 @@ dev_dependencies:
       err,
       containsAllInOrder([
         'dart_mutant run: lib/pair.dart: the tests do not pass without a '
-            'mutant when the mutants are built in; each of its mutants gets '
-            'a start of the test runner of its own',
+            'mutant when they are run as a program of their own, with the '
+            'mutants built in; each of its mutants gets a start of the test '
+            'runner of its own',
         startsWith('dart_mutant run: lib/pair.dart has tests that fail in a '),
         'dart_mutant run: 1 file(s) could not be mutation tested',
         startsWith('  - lib/pair.dart: the tests fail without a mutant'),
@@ -795,7 +796,7 @@ dev_dependencies:
       // The driver is compiled and started, and gets to the mutant that
       // never ends.
       final driver = File(
-        '${dir.path}/$stateDir/work/1/test/dart_mutant_0_0_test.dart',
+        '${dir.path}/$stateDir/work/1/test/dart_mutant_driver_0.dart',
       );
       while (!driver.existsSync()) {
         await Future<void>.delayed(const Duration(milliseconds: 50));

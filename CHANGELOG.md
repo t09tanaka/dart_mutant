@@ -2,52 +2,51 @@
 
 ## 0.2.0-dev (in development)
 
-- **The mutants of a file share one start of the test runner.** They are
-  built into the file behind a variable, as `--schemata` of 0.1.0 built
-  them in, and one start of the test runner then runs a test file per
-  mutant, one after the other, **each in an isolate of its own**: the
-  mutant is at work from the first line of a program that has just
-  started, and nothing of the program is shared between two mutants. This
-  is the default. Only `Killed` is taken from the shared start; a mutant
-  no test fails on, one that does not end, and what cannot be built in get
-  a start of their own, as before.
+- **The tests of a file are compiled once for all its mutants, and every
+  mutant is run by a process of its own.** The mutants of a file are built
+  into it behind a variable, as `--schemata` of 0.1.0 built them in; the
+  tests of the file are compiled once with them (`dart compile kernel`),
+  and that program is started once per mutant. A start costs a tenth of a
+  second or two, where a start of the test runner costs a second or more.
+  This is the default for a pure Dart package. The mutants of a Flutter
+  package each get a start of `flutter test`, as before.
+- Nothing is shared between two mutants that a start of the test runner
+  per mutant does not share either: not the program, and not what a process
+  has beside it. `--schemata` of 0.1.0 ran every mutant in one process and
+  one isolate, and was withdrawn for what the tests left behind there.
+- **Only `Killed` is taken from these processes**, and only when two sides
+  agree: the program wrote down itself, in a file of the tool, that a test
+  failed (nothing a test prints is read), and its process ended with
+  another exit code than 0. A mutant no test fails on, one whose process
+  fails without a test of it having failed (a `setUpAll`, an error that
+  arrives when its test has ended), one that does not end, and what cannot
+  be built in get a start of the test runner of their own, as before.
 - A test of this package requires that every mutant has the status of a
-  start of its own, of a package of tests that are easy to get wrong
-  (`test/fixtures/hazards`, `test/commands/hazards_test.dart`), among them
-  the tests `--schemata` of 0.1.0 was withdrawn for: with an isolate per
-  mutant, the mutant that empties the code that clears a list starts with
-  an empty list.
+  start of the test runner of its own, of a package of tests that are easy
+  to get wrong (`test/fixtures/hazards`, `test/commands/hazards_test.dart`):
+  every mutant of every file is compared both ways, the mutants that
+  sharing a process would kill by mistake are named, and how many mutants
+  of each file were built in, killed that way and left is held.
 - Code of the file that runs in another isolate or process than the tests
-  is noticed: no mutant is at work there, so nothing of the shared start
-  is used for that file, and every mutant of it gets a start of its own.
-  A file that imports `dart:isolate`, or whose test does, is not built in.
-- The results of the last run say which way they were measured, and are
-  not reused by a run that measures the other way.
+  is noticed: no mutant is at work there, so nothing of these processes is
+  used for that file.
 - A mutant in the initializer of a top-level variable or of a `static`
-  field can be built in now: the initializer runs once in an isolate, and
-  every mutant has its own. In 0.1.0 these were left to a start of their
-  own.
+  field can be built in: the initializer runs once in a process, and every
+  mutant has its own.
+- Not built in: a package whose test command does not end in `dart test`,
+  one whose `dart_test.yaml` says more than the names of tags (the tests
+  are run without the test runner, which is what reads that file), a test
+  file with an annotation on its library or an `async` `main`.
 - `--one-by-one`: one start of the test runner per mutant, as 0.1 ran
   them. `--no-schemata` is kept as another name for it. `--schemata` is
   still refused.
-- With one job the mutants are run in a working copy as well, and the files
-  of the package are not written. They are changed in place only with one
-  job and a start per mutant (`--one-by-one --jobs 1`, or one job in a
-  package whose package configuration has neither `test` nor
-  `flutter_test`), and in a package that cannot be copied.
-- The test command is also started with `--timeout 10s --concurrency 1
-  --reporter expanded` and the test files of the mutants, so it has to
-  take those.
-- How a test went with a mutant is not read from the output of the test
-  runner: the test file of the mutant writes it down itself, in a file of
-  the tool, so nothing a test prints can be taken for the result of
-  another test. The output is read for the count of the test runner alone
-  (how many tests had failed when it started on a test file, and at the
-  end), and the two have to agree. A failure that no test file saw (a
-  `setUpAll` or `tearDownAll` that fails, an error that arrives when its
-  test has ended) sends that mutant to a start of its own; without a
-  mutant, or when the test runner ends without saying how the tests
-  ended, nothing of the shared start is used for the file.
+- The results of the last run say which way they were measured, and are
+  not reused by a run that measures the other way.
+- With one job the mutants of a pure Dart package are run in a working copy
+  as well, and the files of the package are not written. They are changed
+  in place only with one job and a start of the test runner per mutant
+  (`--one-by-one --jobs 1`, a Flutter package with one job), and in a
+  package that cannot be copied.
 - The help says of `--only` that the other files of a report are kept when
   this version wrote it (as 0.1.1 does).
 
