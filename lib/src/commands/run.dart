@@ -669,6 +669,9 @@ Future<int> _locked(
   // run; what the report says about the others is kept.
   // A part of a run (--shard) keeps nothing: it is put together with the
   // other parts of the same run, not with an earlier one.
+  // For what the run says about dividing it, at the end.
+  final whole = Stopwatch()..start();
+  var tested = 0;
   final shard = args.shard;
   final others = args.only.isEmpty || shard != null
       ? const <String, Object?>{}
@@ -949,6 +952,7 @@ Future<int> _locked(
           if (statuses[index] == null) index,
       ];
       final reused = reusable == null ? 0 : own.length - pending.length;
+      tested += pending.length;
 
       var remaining = pending;
       var announced = false;
@@ -1374,6 +1378,15 @@ Future<int> _locked(
       '${failures.isEmpty ? '' : ' / ${failures.length} file(s) not tested'})';
   if (pageProblem != null) {
     io.err('$executable run: $pageProblem');
+  }
+  // Before the last line, which is the one other tools read.
+  final advice = shardAdvice(
+    took: whole.elapsed,
+    mutants: tested,
+    shard: shard,
+  );
+  if (advice != null) {
+    io.out('$executable run: $advice');
   }
   if (survivors.isEmpty && failures.isEmpty && pageProblem == null) {
     io.out('$executable run: OK $summary');

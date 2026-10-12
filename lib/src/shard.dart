@@ -25,6 +25,40 @@ class Shard {
   String get label => '$index/$count';
 }
 
+/// How long a run is meant to take at most before [shardAdvice] says how
+/// to divide it.
+const waitGoal = Duration(minutes: 5);
+
+/// What a run that took [took] says about dividing it, or `null` when it
+/// has nothing to say: it took no longer than [waitGoal], or it ran no
+/// test on a mutant ([mutants] is how many mutants had a test run in it;
+/// a run that only read the results of the last one is not made faster by
+/// parts).
+///
+/// The number of parts is what the time of this run asks for: as many
+/// times [waitGoal] as it took, rounded up. For a run that is a part itself
+/// ([shard]) that many times its own number of parts. It is an estimate:
+/// every part also pays for what a run does once (the analysis, the tests
+/// without a mutant).
+String? shardAdvice({
+  required Duration took,
+  required int mutants,
+  Shard? shard,
+}) {
+  if (mutants == 0 || took <= waitGoal) {
+    return null;
+  }
+  final parts =
+      (took.inMilliseconds / waitGoal.inMilliseconds).ceil() *
+      (shard == null ? 1 : shard.count);
+  final each = (took.inMilliseconds / mutants / 1000).toStringAsFixed(2);
+  return '${took.inMinutes} min ${took.inSeconds % 60} s for the test runs of '
+      '$mutants mutant(s)${shard == null ? '' : ' of part ${shard.label}'} '
+      '($each s each). To wait about ${waitGoal.inMinutes} minutes, divide '
+      'the run into $parts parts that run at the same time (--shard 1/$parts '
+      'to $parts/$parts, then "merge")';
+}
+
 final _shard = RegExp(r'^(\d+)/(\d+)$');
 
 /// The value of `--shard`: `<index>/<count>` with an index from 1 to the
