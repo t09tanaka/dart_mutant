@@ -41,11 +41,22 @@ import 'package:test/test.dart';
 /// - `place`: a test that changes the current directory, which the
 ///   isolates of a process share, and does not change it back.
 /// - `pair`: a file with two test files, each with a state of its own.
+/// - `outside`: what fails outside the body of a test, each by a mutant of
+///   its own: while the tests are declared, in a `tearDownAll`, in a
+///   future nobody waits for, when the test has ended, a callback that is
+///   never called (the test waits until its time is up), and a test that
+///   passes when it is tried again (`retry`).
+/// - `halt`: a mutant that ends the test runner itself.
+typedef _Run = ({
+  Map<String, List<String>> mutants,
+  int exitCode,
+  List<String> lines,
+});
+
 void main() {
   late Directory dir;
-  late ({Map<String, String> statuses, int exitCode, List<String> lines}) usual;
-  late ({Map<String, String> statuses, int exitCode, List<String> lines})
-  together;
+  late _Run usual;
+  late _Run together;
 
   const files = [
     'registry',
@@ -60,10 +71,37 @@ void main() {
     'shout',
     'cli',
     'gate',
+    'outside',
+    'halt',
   ];
 
-  /// The files whose mutants are not run with a start that they share, and
-  /// what the run says of each.
+  /// How the start that the mutants of each file share has to go: how many
+  /// mutants are built in, how many of them are killed there, and how many
+  /// are left for a start of their own, as the run says it. A file that is
+  /// given up has no such line, and says why.
+  ///
+  /// Both directions are held: a file that should be given up is, and a
+  /// file that need not be is not run with a start per mutant after all.
+  const shared = <String, String>{
+    'registry': '2 of 2 built in, 1 killed there, 1 left',
+    'counter': '6 of 6 built in, 4 killed there, 2 left',
+    // Two of them never end, and take the mutants since the tests last
+    // passed without a mutant with them.
+    'scales': '55 of 59 built in, 31 killed there, 24 left',
+    'pending': '12 of 13 built in, 9 killed there, 3 left',
+    'lease': '14 of 14 built in, 13 killed there, 1 left',
+    'place': '2 of 2 built in, 2 killed there, 0 left',
+    'pair': '3 of 3 built in, 3 killed there, 0 left',
+    'cli': '17 of 17 built in, 12 killed there, 5 left',
+    // Its setUpAll fails with two of them: no driver sees that, the test
+    // runner counts it, and they are left.
+    'gate': '4 of 5 built in, 2 killed there, 2 left',
+    // Killed there: the error nobody waits for, the callback that is not
+    // called, the count that goes down. Left: what fails while the tests
+    // are declared, in the tearDownAll, and when its test has ended, and
+    // the one survivor.
+    'outside': '12 of 12 built in, 5 killed there, 7 left',
+  };
   const givenUp = {
     'background':
         'dart_mutant run: lib/background.dart imports dart:isolate: an '
@@ -78,12 +116,31 @@ void main() {
         'dart_mutant run: lib/shout.dart: code of the file ran in another '
         'isolate or process than the tests, where no mutant is at work; '
         'each of its mutants gets a start of the test runner of its own',
+    'halt':
+        'dart_mutant run: lib/halt.dart: the test runner did not say how '
+        'the tests ended, or its exit code says something else; each of '
+        'its mutants gets a start of the test runner of its own',
   };
 
-  /// The mutants of the package as `file line:column Mutator replacement`,
-  /// each with its status, the exit code and what the run printed.
-  Future<({Map<String, String> statuses, int exitCode, List<String> lines})>
-  mutate({required bool oneByOne}) async {
+  /// The mutants that a start they share would kill by mistake, each for
+  /// the reason its file is there for. A start of their own lets them
+  /// survive, and that is the result.
+  const survivors = [
+    // Empties the code that clears what the tests leave behind.
+    'lib/registry.dart#0 BlockStatement {} 4:19-6:2',
+    'lib/counter.dart#0 BlockStatement {} 4:16-6:4',
+    // At work on both sides of a comparison across isolates, and across
+    // processes.
+    'lib/codec.dart#? NumberLiteral 4 1:33-1:34',
+    'lib/codec.dart#? NumberLiteral 2 1:33-1:34',
+    'lib/shout.dart#? MethodExpression toLowerCase 1:35-1:46',
+    // No test calls it: it can only fail on what another mutant left.
+    'lib/cli.dart#? NumberLiteral 8 14:16-14:17',
+  ];
+
+  /// The mutants of the package, by file, each as `id mutator replacement
+  /// place: status`, with the exit code and what the run printed.
+  Future<_Run> mutate({required bool oneByOne}) async {
     final lines = <String>[];
     final exitCode = await run([
       'run',
@@ -99,7 +156,7 @@ void main() {
       Platform.resolvedExecutable,
       'test',
     ], Io(out: lines.add, err: lines.add));
-    final files =
+    final report =
         (jsonDecode(
                   File(
                     '${dir.path}/reports/mutation/mutation.json',
@@ -107,19 +164,25 @@ void main() {
                 )
                 as Map<String, Object?>)['files']!
             as Map<String, Object?>;
+    String place(Object? location) {
+      final at = location! as Map<String, Object?>;
+      final start = at['start']! as Map<String, Object?>;
+      final end = at['end']! as Map<String, Object?>;
+      return '${start['line']}:${start['column']}-'
+          '${end['line']}:${end['column']}';
+    }
+
     return (
-      statuses: {
-        for (final MapEntry(key: path, value: file) in files.entries)
-          for (final mutant
-              in ((file! as Map<String, Object?>)['mutants']! as List)
-                  .cast<Map<String, Object?>>())
-            () {
-              final start =
-                  (mutant['location']! as Map<String, Object?>)['start']!
-                      as Map<String, Object?>;
-              return '$path ${start['line']}:${start['column']} '
-                  '${mutant['mutatorName']} ${mutant['replacement']}';
-            }(): mutant['status']! as String,
+      mutants: {
+        for (final MapEntry(key: path, value: file) in report.entries)
+          path: [
+            for (final mutant
+                in ((file! as Map<String, Object?>)['mutants']! as List)
+                    .cast<Map<String, Object?>>())
+              '${mutant['id']} ${mutant['mutatorName']} '
+                  '${mutant['replacement']} ${place(mutant['location'])}: '
+                  '${mutant['status']}',
+          ],
       },
       exitCode: exitCode,
       lines: lines,
@@ -177,79 +240,91 @@ dev_dependencies:
 
   tearDownAll(() => dir.deleteSync(recursive: true));
 
-  test('a start of the test runner for every mutant: the mutants that '
-      'empty the clearing code survive', () {
+  test('every file of the package is in both reports, and the run with a '
+      'start per mutant builds nothing in', () {
+    final paths = [for (final name in files) 'lib/$name.dart'];
+    expect(usual.mutants.keys, paths);
+    expect(together.mutants.keys, paths);
+    expect(usual.lines.where((line) => line.contains('built in')), isEmpty);
+    expect(shared.keys.toSet().union(givenUp.keys.toSet()), files.toSet());
+  });
+
+  for (final name in files) {
+    test('lib/$name.dart: every mutant has the id, the mutator, the '
+        'replacement, the place and the status that a start of the test '
+        'runner of its own gives it', () {
+      final own = usual.mutants['lib/$name.dart']!;
+      expect(own, isNotEmpty);
+      expect(together.mutants['lib/$name.dart'], own);
+    });
+  }
+
+  test('and so the two runs end with the same exit code', () {
     expect(usual.exitCode, 1);
-    expect(
-      usual.statuses,
-      containsPair('lib/registry.dart 4:19 BlockStatement {}', 'Survived'),
-    );
-    expect(
-      usual.statuses,
-      containsPair('lib/counter.dart 4:16 BlockStatement {}', 'Survived'),
-    );
-    expect(
-      usual.lines.where((line) => line.contains('built in')),
-      isEmpty,
-      reason: 'no mutant is built in with --one-by-one',
-    );
+    expect(together.exitCode, 1);
   });
 
-  test('one start of the test runner for the mutants of a file: every '
-      'mutant has the status of a start of its own', () {
-    expect(together.statuses.keys, usual.statuses.keys);
-    expect([
-      for (final MapEntry(key: mutant, value: status) in usual.statuses.entries)
-        if (together.statuses[mutant] != status)
-          '$mutant: $status, ${together.statuses[mutant]}',
-    ], isEmpty);
-    expect(together.exitCode, usual.exitCode);
-  });
-
-  test('and that is what was measured: the mutants of every file were '
-      'built in and killed in the start they share, but for the files '
-      'whose code runs where no mutant is at work, which are given up and '
-      'say so', () {
-    for (final name in files) {
-      final killedTogether = matches(
-        '^  lib/$name\\.dart: [1-9]\\d* killed with the mutants built in',
+  test('the mutants that a start they share would kill by mistake survive '
+      'a start of their own', () {
+    final all = [for (final mutants in usual.mutants.values) ...mutants];
+    for (final survivor in survivors) {
+      final pattern = RegExp(
+        '^${RegExp.escape(survivor).replaceFirst(r'#\?', r'#\d+')}: Survived\$',
       );
-      if (givenUp.containsKey(name)) {
-        expect(together.lines, contains(givenUp[name]));
-        expect(together.lines, isNot(contains(killedTogether)));
-      } else {
-        expect(
-          together.lines,
-          contains(killedTogether),
-          reason: together.lines.join('\n'),
-        );
+      expect(
+        all.where(pattern.hasMatch),
+        hasLength(1),
+        reason: '$survivor\n${all.join('\n')}',
+      );
+    }
+  });
+
+  test('how the start that the mutants of a file share went: how many '
+      'mutants were built in, killed there, and left for a start of their '
+      'own', () {
+    final went = <String, String>{};
+    for (final name in files) {
+      final builtIn = RegExp(
+        '^  lib/$name\\.dart: (\\d+) of (\\d+) mutant\\(s\\) built in,',
+      );
+      final killed = RegExp(
+        '^  lib/$name\\.dart: (\\d+) killed with the mutants built in'
+        '(?:; (\\d+) cannot be built in \\([^)]*\\))?'
+        '(?:; (\\d+) not killed that way get a start of their own)?(?:;|\$)',
+      );
+      final first = together.lines.map(builtIn.firstMatch).nonNulls;
+      final second = together.lines.map(killed.firstMatch).nonNulls;
+      if (first.isNotEmpty && second.isNotEmpty) {
+        went[name] =
+            '${first.single.group(1)} of ${first.single.group(2)} built in, '
+            '${second.single.group(1)} killed there, '
+            '${second.single.group(3) ?? 0} left';
       }
+    }
+    expect(went, shared, reason: together.lines.join('\n'));
+  });
+
+  test('the files whose code runs where no mutant is at work, and the one '
+      'that ends the test runner, are given up, and say so; no other file '
+      'is', () {
+    for (final MapEntry(key: name, value: line) in givenUp.entries) {
+      expect(together.lines, contains(line), reason: name);
+      expect(
+        together.lines.where(
+          (line) =>
+              line.startsWith('  lib/$name.dart: ') &&
+              line.contains('killed with the mutants built in'),
+        ),
+        isEmpty,
+      );
     }
     expect(
       together.lines.where(
         (line) => line.contains('each of its mutants gets a start'),
       ),
       hasLength(givenUp.length),
+      reason: together.lines.join('\n'),
     );
-    // In the table that is computed once as well.
-    expect(
-      together.lines.where((line) => line.contains('lib/scales.dart')).join(),
-      isNot(contains('runs once')),
-    );
-  });
-
-  test('the mutants that only a start they share would kill survive: '
-      'both sides of the comparison are the mutant', () {
-    for (final mutant in [
-      'lib/codec.dart 1:33 NumberLiteral 4',
-      'lib/codec.dart 1:33 NumberLiteral 2',
-      'lib/shout.dart 1:35 MethodExpression toLowerCase',
-      // No test calls it.
-      'lib/cli.dart 14:16 NumberLiteral 8',
-    ]) {
-      expect(usual.statuses, containsPair(mutant, 'Survived'));
-      expect(together.statuses, containsPair(mutant, 'Survived'));
-    }
   });
 
   test('--schemata is still wrong usage, and nothing is run', () async {

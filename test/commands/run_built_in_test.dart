@@ -419,7 +419,7 @@ dev_dependencies:
         matches(
           r'^  lib/sum\.dart: \d+ of \d+ mutant\(s\) built in, each run '
           r'by a test file of its own, with ".* test --timeout 10s '
-          r'--concurrency 1 --reporter json"',
+          r'--concurrency 1 --reporter expanded"',
         ),
       ),
     );
@@ -694,9 +694,8 @@ dev_dependencies:
       err,
       containsAllInOrder([
         'dart_mutant run: lib/pair.dart: the tests do not pass without a '
-            'mutant when the mutants are built in ("after the other file" '
-            'fails); each of its mutants gets a start of the test runner of '
-            'its own',
+            'mutant when the mutants are built in; each of its mutants gets '
+            'a start of the test runner of its own',
         startsWith('dart_mutant run: lib/pair.dart has tests that fail in a '),
         'dart_mutant run: 1 file(s) could not be mutation tested',
         startsWith('  - lib/pair.dart: the tests fail without a mutant'),

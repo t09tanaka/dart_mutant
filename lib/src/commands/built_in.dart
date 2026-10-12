@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -281,6 +282,8 @@ Future<BuiltInRun> runBuiltIn({
                     package: package,
                   ),
                   test: importOf(test, directory: directory),
+                  position: position,
+                  index: index,
                   id: id,
                   state: state.absolute.path,
                 ),
@@ -289,7 +292,34 @@ Future<BuiltInRun> runBuiltIn({
             );
           }
         }
-        final log = DriverLog(plan);
+        final log = DriverLog(plan, tests: tests.length);
+        // What the drivers wrote down since it was last looked at.
+        final notes = File(p.join(state.path, 'log'));
+        var read = 0;
+        var partial = '';
+        void readNotes() {
+          if (!notes.existsSync()) {
+            return;
+          }
+          final file = notes.openSync();
+          try {
+            final length = file.lengthSync();
+            if (length <= read) {
+              return;
+            }
+            file.setPositionSync(read);
+            final text =
+                partial +
+                utf8.decode(file.readSync(length - read), allowMalformed: true);
+            read = length;
+            final lines = text.split('\n');
+            // A line that is not written to its end yet.
+            partial = lines.removeLast();
+            lines.forEach(log.record);
+          } finally {
+            file.closeSync();
+          }
+        }
 
         // The time limit: of the position that is at work, since it is.
         final stop = Completer<void>();
@@ -299,9 +329,13 @@ Future<BuiltInRun> runBuiltIn({
         // the first one held.
         late final MemoryWatch memory;
         memory = MemoryWatch(
-          limit: () => log.memoryLimit(memory.peak, memoryLimitOf),
+          limit: () {
+            readNotes();
+            return log.memoryLimit(memory.peak, memoryLimitOf);
+          },
         );
         final timer = Timer.periodic(_tick, (_) {
+          readNotes();
           final current = log.current;
           if (current != at) {
             at = current;
@@ -325,10 +359,10 @@ Future<BuiltInRun> runBuiltIn({
             workingDirectory: copy,
             capture: true,
             signals: signals,
+            // Only what the test runner says of its own count is read.
             onLine: (line) {
-              final id = running ? log.add(line) : null;
-              if (id != null) {
-                File(p.join(state.path, 'killed', '$id')).createSync();
+              if (running) {
+                log.output(line);
               }
             },
             stop: stop.future,
@@ -354,9 +388,15 @@ Future<BuiltInRun> runBuiltIn({
           failure ??= ranElsewhere;
           return;
         }
+        readNotes();
         if (result.limited) {
-          log.ended();
           result.overMemory ? heavy++ : unended++;
+        } else if (!log.done ||
+            (result.exitCode == 0) != (log.failedAtEnd == 0)) {
+          // It ended by itself: then it has to say how, and its exit code
+          // has to say the same.
+          failure ??= noVerdict;
+          return;
         }
         final found = log.result;
         if (found.failure != null) {
