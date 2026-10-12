@@ -5,7 +5,8 @@
 - **The tests of a file are compiled once for all its mutants, and every
   mutant is run by a process of its own.** The mutants of a file are built
   into it behind a variable, as `--schemata` of 0.1.0 built them in; the
-  tests of the file are compiled once with them (`dart compile exe`),
+  tests of the file are compiled once with them (`dart compile
+  jit-snapshot`),
   and that program is started once per mutant. A start costs a tenth of a
   second or two, where a start of the test runner costs a second or more.
   This is the default for a pure Dart package. The mutants of a Flutter

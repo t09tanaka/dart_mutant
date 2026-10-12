@@ -156,14 +156,30 @@ List<String>? dartOf(List<String> command) =>
     : null;
 
 /// The command that compiles the driver [driver] once, to the program
-/// [program]: ahead of time, so that a start of it costs next to nothing,
-/// and with assertions, which the test runner runs tests with.
+/// [program]: a snapshot of the Dart VM with the code compiled as a run of
+/// the tests without a mutant needs it (that run is part of compiling),
+/// so that a start of it costs little; and with assertions, which the test
+/// runner runs tests with. Such a snapshot keeps nothing of what that run
+/// did: every start of it begins as a program does.
 List<String> compileCommand(List<String> dart, String driver, String program) =>
-    [...dart, 'compile', 'exe', '--enable-asserts', driver, '-o', program];
+    [
+      ...dart,
+      'compile',
+      'jit-snapshot',
+      '--enable-asserts',
+      '-o',
+      program,
+      driver,
+      '$noMutant',
+    ];
 
 /// The command that runs the compiled driver [program] on the mutant [id]
 /// ([noMutant] for none), in a process of its own.
-List<String> driverCommand(String program, int id) => [program, '$id'];
+List<String> driverCommand(List<String> dart, String program, int id) => [
+  ...dart,
+  program,
+  '$id',
+];
 
 /// `package:test/test.dart` when the package with the package configuration
 /// [packageConfig] has `test`, and `test_api`, from which a driver reads

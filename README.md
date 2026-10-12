@@ -15,7 +15,7 @@ Mutation testing for Dart and Flutter.
 
 ```
 $ dart_mutant run lib/discount.dart
-  lib/discount.dart: 18 of 22 mutant(s) built in, each run by a process of its own, with "<the tests, compiled once with dart> <mutant>" (4 do not compile)
+  lib/discount.dart: 18 of 22 mutant(s) built in, each run by a process of its own, with "dart <the tests, compiled once> <mutant>" (4 do not compile)
   lib/discount.dart: 16 killed with the mutants built in; 2 not killed that way get a start of their own
   lib/discount.dart: 2 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 2 at a time
   lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (16.5s)
@@ -304,7 +304,7 @@ The smallest expression or statement around a mutant becomes a choice between th
 
 ### The program that runs the tests
 
-For every test file of the file a small program is written next to it, **in a working copy**: `dart_mutant_driver_<n>.dart`. It sets the variable to the mutant it is given as its argument and calls `main()` of the test file. It is compiled once, ahead of time and with assertions (`dart compile exe --enable-asserts`), and then started once for the tests **without a mutant**, once per mutant, once more without a mutant after every 25 mutants, and at the end.
+For every test file of the file a small program is written next to it, **in a working copy**: `dart_mutant_driver_<n>.dart`. It sets the variable to the mutant it is given as its argument and calls `main()` of the test file. It is compiled once, to a snapshot of the Dart VM that has run the tests without a mutant once (`dart compile jit-snapshot --enable-asserts`: the same VM and the same assertions as under the test runner, and nothing of that run is kept but compiled code), and then started once for the tests **without a mutant**, once per mutant, once more without a mutant after every 25 mutants, and at the end.
 
 - **Every start is a process of its own**, as a start of the test runner is. Nothing is shared between two mutants that the usual way does not share either: not the program (the mutant is at work while the tests are declared, and when a top-level variable or a `static` field is first read), and not what a process has beside it (its id, its current directory, its exit code, what native code keeps).
 - The tests are run by `package:test` itself, the way it runs a test file that is started as a program, **without the test runner**. What only the test runner reads is therefore not in force: see [What cannot be built in](#what-cannot-be-built-in) for what that excludes.
@@ -412,7 +412,7 @@ One file with many mutants, or with slow tests, takes as long as it takes: `--jo
 
 ```
 $ dart_mutant run lib/discount.dart --shard 1/2 --report reports/parts/1.json
-  lib/discount.dart: 9 of 22 mutant(s) built in, each run by a process of its own, with "<the tests, compiled once with dart> <mutant>" (2 do not compile)
+  lib/discount.dart: 9 of 22 mutant(s) built in, each run by a process of its own, with "dart <the tests, compiled once> <mutant>" (2 do not compile)
   lib/discount.dart: 8 killed with the mutants built in; 1 not killed that way get a start of their own
   lib/discount.dart: 1 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 1 at a time
   lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (12.5s)
@@ -420,7 +420,7 @@ dart_mutant run: 1 surviving mutant(s)
   - lib/discount.dart:7:30 / NumberLiteral / 0 → 1 (Survived)
 dart_mutant run: FAILED (shard 1/2: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run))
 $ dart_mutant run lib/discount.dart --shard 2/2 --report reports/parts/2.json
-  lib/discount.dart: 9 of 22 mutant(s) built in, each run by a process of its own, with "<the tests, compiled once with dart> <mutant>" (2 do not compile)
+  lib/discount.dart: 9 of 22 mutant(s) built in, each run by a process of its own, with "dart <the tests, compiled once> <mutant>" (2 do not compile)
   lib/discount.dart: 8 killed with the mutants built in; 1 not killed that way get a start of their own
   lib/discount.dart: 1 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 1 at a time
   lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (12.4s)

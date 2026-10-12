@@ -267,10 +267,7 @@ Future<BuiltInRun> runBuiltIn({
           ),
           flush: true,
         );
-        final program = p.join(
-          state.absolute.path,
-          'driver_$index${Platform.isWindows ? '.exe' : ''}',
-        );
+        final program = p.join(state.absolute.path, 'driver_$index.jit');
         final compiled = await runCommand(
           compileCommand(dart, driverPathOf(tests, index), program),
           workingDirectory: copy,
@@ -320,7 +317,7 @@ Future<BuiltInRun> runBuiltIn({
             limit: limit == null ? null : () => memoryLimit,
           );
           final result = await runCommand(
-            driverCommand(program, id),
+            driverCommand(dart, program, id),
             workingDirectory: copy,
             capture: true,
             signals: signals,
@@ -331,7 +328,8 @@ Future<BuiltInRun> runBuiltIn({
             return;
           }
           if (result.exitCode == null && !result.limited) {
-            aborted ??= 'cannot start "$program" (${result.startError})';
+            aborted ??=
+                'cannot start "${dart.join(' ')}" (${result.startError})';
             return;
           }
           if (memory.peak > held) {

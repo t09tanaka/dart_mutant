@@ -301,18 +301,24 @@ void main() {
   });
 
   test('compileCommand and driverCommand', () {
-    expect(compileCommand(['fvm', 'dart'], 'test/d_0.dart', '/s/d_0'), [
+    expect(compileCommand(['fvm', 'dart'], 'test/d_0.dart', '/s/d_0.jit'), [
       'fvm',
       'dart',
       'compile',
-      'exe',
+      'jit-snapshot',
       '--enable-asserts',
-      'test/d_0.dart',
       '-o',
-      '/s/d_0',
+      '/s/d_0.jit',
+      'test/d_0.dart',
+      '-1',
     ]);
-    expect(driverCommand('/s/d_0', 12), ['/s/d_0', '12']);
-    expect(driverCommand('d', -1), ['d', '-1']);
+    expect(driverCommand(['fvm', 'dart'], '/s/d_0.jit', 12), [
+      'fvm',
+      'dart',
+      '/s/d_0.jit',
+      '12',
+    ]);
+    expect(driverCommand(['dart'], 'd.jit', -1), ['dart', 'd.jit', '-1']);
   });
 
   group('testLibraryOf', () {
