@@ -105,27 +105,26 @@ void main() {
     expect(built.left, isEmpty);
   });
 
-  test('a constant and an initializer that runs once are left out, with '
-      'the reason', () async {
+  test('a constant is left out, with the reason; an initializer that runs '
+      'once in an isolate is built in', () async {
     final (built, mutants) = await build('''
 const names = ['a'];
 final count = names.length + 1;
 void g([String a = 'b']) {}
 int f(int a) => a + count;
 ''');
-    expect(built.ids, [mutants.indexOf('ArithmeticOperator + → -', 3)]);
-    expect(built.left.values.toSet(), {runsOnce, changesProgram});
-    expect(
-      built.left[mutants.indexOf("StringLiteral 'b' → ''")],
-      changesProgram,
-    );
+    // `names.length + 1`, which runs once, and its number.
+    expect(built.ids, [2, 4, 5, 6]);
+    expect(mutants[2], 'ArithmeticOperator + → -');
+    expect(built.left, {
+      0: constantContext,
+      1: constantContext,
+      3: changesProgram,
+    });
     expect(
       built.reasons,
-      matches(
-        '^\\d+ in an initializer that runs once in a process, 1 the '
-        'program does not compile, or has other types, with a choice '
-        r'there$',
-      ),
+      '2 in a constant, 1 the program does not compile, or has other '
+      'types, with a choice there',
     );
   });
 

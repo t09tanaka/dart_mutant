@@ -1,0 +1,3 @@
+String shout(String text) => text.toUpperCase();
+
+int width(String text) => text.length + 2;

@@ -50,6 +50,15 @@ bool _sameBytes(List<int> a, List<int> b) {
 String _reason(FileSystemException error) =>
     error.osError?.message ?? error.message;
 
+/// True when a file next to [test] (relative to [root]) has a name that a
+/// driver could have.
+bool _hasDriverName(String root, String test) {
+  final directory = Directory(_inPackage(root, directoryOf(test)));
+  return directory.listSync().any(
+    (entity) => p.basename(entity.path).startsWith(driverPrefix),
+  );
+}
+
 /// The files of a run below [stateDir].
 class _State {
   _State(String root) : dir = _inPackage(root, stateDir);
@@ -705,15 +714,18 @@ Future<int> _locked(
     // No pubspec: `dart test` says what is wrong.
   }
   var jobs = args.jobs ?? defaultJobs(Platform.numberOfProcessors);
-  // With the mutants built in, every test run is in a working copy, also
-  // when they are run one at a time.
-  var schemata = args.schemata ?? schemataByDefault;
   String? packageConfig;
   try {
     packageConfig = readText(_inPackage(root, packageConfigPath));
   } on FileSystemException {
     // The obstacle below.
   }
+  // What declares `setUp` for the test file of a mutant. A package that
+  // has neither is run one by one, as with --one-by-one.
+  final testLibrary = testLibraryOf(packageConfig, flutter: flutter);
+  // With the mutants built in, every test run is in a working copy, also
+  // when they are run one at a time.
+  var schemata = (args.schemata ?? schemataByDefault) && testLibrary != null;
   if (jobs > 1 || schemata) {
     final obstacle = copyObstacle(
       root: root,
@@ -725,7 +737,7 @@ Future<int> _locked(
       io.err(
         '$executable run: $obstacle, so it cannot be run from working copies. '
         'The mutants are run one at a time, in place (--jobs 1)'
-        '${schemata ? ', and are not built into one program' : ''}',
+        '${schemata ? ', each with a start of the test runner of its own' : ''}',
       );
       jobs = 1;
       schemata = false;
@@ -734,7 +746,6 @@ Future<int> _locked(
   final copies = jobs > 1 || schemata
       ? _Copies(Directory(root).resolveSymbolicLinksSync(), state.work, jobs)
       : null;
-  final testLibrary = testLibraryOf(packageConfig, flutter: flutter);
   // True once a file of the package was written by this run.
   var inPlace = false;
   final command = testCommandFor(flutter: flutter, override: args.command);
@@ -823,6 +834,7 @@ Future<int> _locked(
         source: source,
         tests: testTexts,
         command: command,
+        sharedStart: schemata,
       );
       final watch = Stopwatch()..start();
       final List<Mutant> mutants;
@@ -874,13 +886,12 @@ Future<int> _locked(
           if (schemata &&
               compiling.isNotEmpty &&
               reasons.length == mutants.length) {
-            notBuilt = testLibrary == null
-                ? 'the package has neither test nor flutter_test'
-                : fileObstacle(source) ??
-                      testsObstacle(
-                        testTexts,
-                        taken: existsExact(root, driverPathOf(target.tests)),
-                      );
+            notBuilt =
+                fileObstacle(source) ??
+                testsObstacle(
+                  testTexts,
+                  taken: _hasDriverName(root, target.tests.first),
+                );
             if (notBuilt == null) {
               try {
                 built = await buildIn(
@@ -938,8 +949,8 @@ Future<int> _locked(
             : 'is behind a symbolic link';
         if (instead == null && notBuilt != null) {
           io.err(
-            '$executable run: $path $notBuilt; its mutants are not built into '
-            'one program',
+            '$executable run: $path $notBuilt; each of its mutants gets a '
+            'start of the test runner of its own',
           );
         }
         final refused = own
@@ -955,7 +966,7 @@ Future<int> _locked(
           );
         }
         if (instead == null && built != null && built.ids.isNotEmpty) {
-          // One driver has to start, compile and run the tests without a
+          // One test run has to start, compile and run the tests without a
           // mutant before its first mutant: more of them only pay when
           // each has enough to do.
           final drivers = min(
@@ -971,8 +982,8 @@ Future<int> _locked(
           if (used != null) {
             io.out(
               '  $path: ${built.ids.length} of ${mutants.length} mutant(s) '
-              'built into one program, with '
-              '"${driverCommand(command, driverPathOf(target.tests)).join(' ')}"'
+              'built in, each run by a test file of its own, with '
+              '"${driverCommand(command, const []).join(' ')}"'
               '${drivers == 1 ? '' : ', $drivers at a time'}'
               '${said ? '' : ' ($refused do not compile)'}',
             );
@@ -984,6 +995,7 @@ Future<int> _locked(
               path: path,
               original: original,
               content: built.content,
+              guardAt: built.guardAt,
               ids: built.ids,
               tests: target.tests,
               command: command,
@@ -1001,8 +1013,8 @@ Future<int> _locked(
             }
             if (outcome.failure != null) {
               io.err(
-                '$executable run: $path: ${outcome.failure}; its mutants are '
-                'run the usual way',
+                '$executable run: $path: ${outcome.failure}; each of its '
+                'mutants gets a start of the test runner of its own',
               );
             } else {
               fromDriver = outcome.killed.keys.toList();
@@ -1019,11 +1031,11 @@ Future<int> _locked(
                 '${left == 0 ? '' : '; $left cannot be built in '
                           '(${built.reasons})'}'
                 '${unsettled == 0 ? '' : '; $unsettled not killed that way '
-                          'are measured the usual way'}'
+                          'get a start of their own'}'
                 '${outcome.unended == 0 ? '' : '; ${outcome.unended} of '
-                          'them did not end, and the driver was ended'}'
+                          'them did not end, and the test run was ended'}'
                 '${outcome.heavy == 0 ? '' : '; with ${outcome.heavy} of '
-                          'them the driver used too much memory, and was '
+                          'them the test run used too much memory, and was '
                           'ended'}',
               );
             }
@@ -1054,8 +1066,9 @@ Future<int> _locked(
                 fromDriver = const [];
                 left = pending;
                 io.err(
-                  '$executable run: $path: the tests do not pass the usual way '
-                  'in a working copy; nothing of the driver is used',
+                  '$executable run: $path: the tests do not pass with a start '
+                  'of the test runner of their own in a working copy; nothing '
+                  'of the shared start is used',
                 );
               }
             }

@@ -1,0 +1,7 @@
+import 'package:hazard_fixture/pair.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('first call here as well', () => expect(next(), 1));
+  test('second call', () => expect(next(), 2));
+}

@@ -1,0 +1,18 @@
+import 'dart:io';
+
+import 'package:hazard_fixture/place.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('starts in the package', () {
+    expect(isPackage(here()), isTrue);
+    expect(isPackage(Directory.systemTemp.path), isFalse);
+  });
+
+  // Leaves the process somewhere else, and does not go back.
+  test('moves', () {
+    final start = here();
+    goTo(Directory.systemTemp.path);
+    expect(here(), isNot(start));
+  });
+}

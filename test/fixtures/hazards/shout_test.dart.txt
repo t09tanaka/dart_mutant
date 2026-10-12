@@ -1,0 +1,17 @@
+import 'dart:io';
+
+import 'package:hazard_fixture/shout.dart';
+import 'package:test/test.dart';
+
+void main() {
+  // Both sides are the code under test, one of them in another process.
+  test('the program says what the function says', () {
+    final program = Process.runSync(Platform.resolvedExecutable, [
+      'bin/shout.dart',
+      'word',
+    ]);
+    expect((program.stdout as String).trim(), shout('word'));
+  });
+
+  test('width', () => expect(width('ab'), 4));
+}

@@ -1,0 +1,5 @@
+import 'dart:isolate';
+
+/// [work] in another isolate. The file under test does not know of it, and
+/// neither does its test file: only this one imports `dart:isolate`.
+Future<R> elsewhere<R>(R Function() work) => Isolate.run(work);

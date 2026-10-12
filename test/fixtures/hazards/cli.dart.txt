@@ -1,0 +1,14 @@
+import 'dart:io';
+
+/// Sets the exit code of the process, which all its isolates share.
+void run(List<String> arguments) {
+  if (arguments.contains('--help')) {
+    return;
+  }
+  exitCode = 64;
+}
+
+int limit(int value) => value > 100 ? 100 : value;
+
+/// No test calls this.
+int spare() => 7;

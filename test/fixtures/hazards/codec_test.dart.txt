@@ -1,0 +1,13 @@
+import 'package:hazard_fixture/codec.dart';
+import 'package:hazard_fixture/elsewhere.dart';
+import 'package:test/test.dart';
+
+void main() {
+  // Both sides are the code under test: a mutant that is in the file is in
+  // both, and the test cannot see it.
+  test('the same here and elsewhere', () async {
+    expect(await elsewhere(() => scale(4)), scale(4));
+  });
+
+  test('offset', () => expect(offset(1), 4));
+}

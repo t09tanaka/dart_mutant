@@ -5,10 +5,14 @@ import 'package:analyzer/dart/element/element.dart';
 
 import 'mutant.dart';
 
+/// What every name starts with that is added to a file its mutants are
+/// built into.
+const namePrefix = r'$dartMutant';
+
 /// The variable that says which mutant of a file is at work, when the
-/// mutants are built into the file (`--schemata`): the number of the
-/// mutant, or [noMutant].
-const switchName = r'$dartMutantActive';
+/// mutants are built into the file: the number of the mutant, or
+/// [noMutant].
+const switchName = '${namePrefix}Active';
 
 /// The value of [switchName] with which the file does what it did before.
 const noMutant = -1;
@@ -16,6 +20,58 @@ const noMutant = -1;
 /// What is added to the end of a file its mutants are built into. At the
 /// end, so that no place in the file moves.
 const switchDeclaration = '\nint $switchName = $noMutant;\n';
+
+/// What [guarded] puts in front of the code of a file: `dart:io`, under a
+/// name of its own.
+const guardImport = "import 'dart:io' as ${namePrefix}Io; ";
+
+/// What [guarded] ends a file with instead of [switchDeclaration]: the
+/// variable, whose first value is asked for by an isolate that reads it
+/// before it was set, and then leaves the file [marker] (a Dart string
+/// literal) behind. When the file cannot be written, the read throws: the
+/// code does not go on unnoticed.
+String guardDeclaration(String marker) =>
+    '\nint $switchName = ${namePrefix}Elsewhere();\n'
+    'int ${namePrefix}Elsewhere() {\n'
+    '  ${namePrefix}Io.File($marker).writeAsStringSync(\'\');\n'
+    '  return $noMutant;\n'
+    '}\n';
+
+/// Where [guardImport] goes in [source], and in the same source with
+/// mutants built in: behind its last `library`, `import` or `export`
+/// directive, or else in front of its first directive or declaration. No
+/// mutant is in front of that place.
+int guardOffsetOf(String source) {
+  final unit = parseString(content: source, throwIfDiagnostics: false).unit;
+  var at = unit.directives.isNotEmpty
+      ? unit.directives.first.offset
+      : unit.declarations.isNotEmpty
+      ? unit.declarations.first.offset
+      : source.length;
+  for (final directive in unit.directives) {
+    if (directive is LibraryDirective || directive is NamespaceDirective) {
+      at = directive.end;
+    }
+  }
+  return at;
+}
+
+/// [embedded] (what [embed] made of a source, with the variable declared)
+/// with a guard: the code as it runs in a test.
+///
+/// The test file of a mutant sets the variable before anything reads it,
+/// in its own isolate. Code of the file that runs anywhere else (an isolate
+/// that a test or the code under test starts, a process that it starts)
+/// reads a variable that nobody set: no mutant is at work there, where a
+/// mutant that is written into the file is at work everywhere. The first
+/// such read leaves the file [marker] behind, and nothing of that test run
+/// is used.
+///
+/// [at] is [guardOffsetOf] the source.
+String guarded(String embedded, {required int at, required String marker}) =>
+    '${embedded.substring(0, at)}$guardImport'
+    '${embedded.substring(at, embedded.length - switchDeclaration.length)}'
+    '${guardDeclaration(marker)}';
 
 /// The longest text that is written a second time to build a mutant in. A
 /// mutant that needs more (a whole long function) is run the usual way.
@@ -30,16 +86,32 @@ String? fileObstacle(String source) {
   final unit = parseString(content: source, throwIfDiagnostics: false).unit;
   // As a name: in a string or a comment it is in nobody's way.
   for (var token = unit.beginToken; !token.isEof; token = token.next!) {
-    if (token.lexeme == switchName) {
-      return 'has the name $switchName in it';
+    if (token.lexeme.startsWith(namePrefix)) {
+      return 'has a name that starts with $namePrefix in it';
     }
   }
   if (unit.directives.any((directive) => directive is PartOfDirective)) {
-    // The driver imports the file to set the variable.
+    // The test file of a mutant imports the file to set the variable.
     return 'is a part of a library';
+  }
+  if (importsIsolates(unit)) {
+    return startsIsolates;
   }
   return null;
 }
+
+/// Why a file that imports `dart:isolate`, or whose tests do, is not run
+/// with its mutants built in.
+const startsIsolates =
+    'imports dart:isolate: an isolate that it starts does not end with the '
+    'test file of a mutant, and no mutant is at work in it';
+
+/// True when [unit] imports `dart:isolate`.
+bool importsIsolates(CompilationUnit unit) => unit.directives.any(
+  (directive) =>
+      directive is ImportDirective &&
+      directive.uri.stringValue == 'dart:isolate',
+);
 
 /// A mutant as a choice made while the program runs: the node from [offset]
 /// to [end] does what [alternative] says while the mutant [id] is at work.
@@ -148,7 +220,6 @@ List<Wrap> inSourceOrderOf(List<Wrap> wraps) {
 }
 
 /// Why a mutant has no place where it can be built in.
-const runsOnce = 'in an initializer that runs once in a process';
 const constantContext = 'in a constant';
 const noPlace = 'no expression or statement around it can take it';
 
@@ -212,33 +283,18 @@ bool _isNoValue(Expression node) {
       node is FunctionExpression && parent is FunctionDeclaration;
 }
 
-/// True when [node] is in the initializer of a top-level variable or of a
-/// static field, outside every function in it: that code runs once in a
-/// process, when the variable is first read, so a mutant in it cannot be
-/// changed for another while the program runs.
-bool _runsOnce(AstNode node) {
-  for (AstNode? at = node; at != null; at = at.parent) {
-    if (at is FunctionBody) {
-      return false;
-    }
-    if (at is TopLevelVariableDeclaration) {
-      return true;
-    }
-    if (at is FieldDeclaration) {
-      return at.isStatic;
-    }
-  }
-  return false;
-}
-
 /// Where [mutant] (the mutant [id] of [source], whose syntax tree is [unit])
 /// could be built in: every expression and statement around it that is an
 /// expression or a statement with the mutant in it as well ([mutated] is the
 /// syntax tree of the mutated source), the smallest first.
 ///
 /// Left out: a statement that declares a name, what is no value, a
-/// constant, what runs once in a process, and what is longer than
-/// [longestAlternative].
+/// constant, and what is longer than [longestAlternative].
+///
+/// The initializer of a top-level variable or of a static field is a place
+/// like any other: it runs once in an isolate, when the variable is first
+/// read, and every mutant is run in an isolate of its own, in which it is
+/// at work from the start (see `driverSource`).
 Places placesOf(
   CompilationUnit unit,
   String source,
@@ -269,10 +325,6 @@ Places placesOf(
     }
     if (node.length + growth > longestAlternative) {
       break;
-    }
-    if (_runsOnce(node)) {
-      reason = runsOnce;
-      continue;
     }
     if (node is Expression && node.inConstantContext) {
       reason = constantContext;
