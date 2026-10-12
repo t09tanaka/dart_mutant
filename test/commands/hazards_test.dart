@@ -144,6 +144,9 @@ void main() {
     // The mutants that end the process end it with 0: no test failed.
     'halt': '8 of 9 built in, 2 killed there, 6 left',
     'ledger': '7 of 7 built in, 4 killed there, 3 left',
+    // Left: the two that are the same program as the original, and the six
+    // that would fail on a file that is not left.
+    'spool': '40 of 40 built in, 32 killed there, 8 left',
     // Every failure of it is printed in the form of a compiler error.
     'diag': '4 of 4 built in, 0 killed there, 4 left',
   };
