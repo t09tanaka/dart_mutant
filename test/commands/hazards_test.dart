@@ -24,7 +24,7 @@ import 'package:test/test.dart';
 ///   reported as killed. It was withdrawn in 0.1.1 for that.
 /// - `background`: code that runs in another isolate, where no mutant is
 ///   at work.
-/// - `table`: a top-level variable and a static field that are computed
+/// - `scales`: a top-level variable and a static field that are computed
 ///   once, and tests that are declared from the code under test, so that a
 ///   mutant changes how many there are.
 /// - `pending`: a test that leaves a timer running and a future
@@ -43,7 +43,7 @@ void main() {
     'registry',
     'counter',
     'background',
-    'table',
+    'scales',
     'pending',
     'lease',
     'place',
@@ -195,7 +195,7 @@ dev_dependencies:
     );
     // In the table that is computed once as well.
     expect(
-      together.lines.where((line) => line.contains('lib/table.dart')).join(),
+      together.lines.where((line) => line.contains('lib/scales.dart')).join(),
       isNot(contains('runs once')),
     );
   });

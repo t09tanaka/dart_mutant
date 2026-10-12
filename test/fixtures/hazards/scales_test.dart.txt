@@ -1,4 +1,4 @@
-import 'package:hazard_fixture/table.dart';
+import 'package:hazard_fixture/scales.dart';
 import 'package:test/test.dart';
 
 void main() {
