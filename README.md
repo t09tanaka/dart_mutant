@@ -627,20 +627,20 @@ The gates of this package itself (see [Development](#the-gates-of-this-package))
 
 In the workflow of this package (hosted runners of GitHub Actions, `--jobs 2`, one job per gate), with 0.1, the gate with the slowest tests, 544 mutants of which 483 compile, took 54 minutes as one job. Divided with `--shard` into four jobs, each took 9 to 14 minutes, and the whole workflow 16 minutes from start to end. The four parts had 119 to 122 test runs each and still differed that much: one test run cost between 4 and 7 seconds from job to job. The jobs together took a little less time than the one (46 minutes against 54 in these two runs), so dividing cost nothing there; for a file whose mutants take seconds in total, the checkout, `pub get` and the tests without a mutant of every part would outweigh what is gained.
 
-### With one start for the mutants of a file
+### With the tests compiled once, and a process per mutant
 
-Measured on the same machine with `--force --jobs 3`, on a day on which it was very busy with other work (so the times are long, and say more about each other than about your machine):
+Measured on the same machine with `--force --jobs 3`, while it was nearly idle (load averages between 4 and 8 on 12 processors), one run each way:
 
 | Package                                          | Mutants | `--one-by-one` | Default        |
 | ------------------------------------------------ | ------- | -------------- | -------------- |
-| [`example/`](example/) of this package, one file | 22      | 16 to 18 s     | 17 to 20 s     |
-| 13 of the gates of this package                  | 2,001   | 35 min         | 19 min         |
+| [`example/`](example/) of this package, one file | 22      | 20 s           | 17 to 19 s     |
+| The gates of this package, 16 files              | 2,799   | 26 min         | 15 min         |
 
-- **The statuses of every mutant were the same either way**, report against report: the same mutants, places and statuses, for the 2,922 mutants of all 16 gates and the 22 of the example, in the one pair of runs that was made of each (the table has the 13 gates whose pair was made in one go; the other three, 921 mutants, were changed in between and compared afterwards). So they are for the files of [`test/fixtures/hazards`](test/fixtures/hazards), which a test of this package requires in every run of the tests.
-- A file with quick tests whose mutants can nearly all be built in took a fifth to a third of the time (`merge.dart`: 29 s against 178 s for 264 mutants; `args.dart`: 44 s against 197 s for 245).
-- The two gates that take most of the time gained least (`typed_mutators.dart`: 12 min against 18 min): 179 of the 483 mutants of that file that compile are in `const` tables and cannot be built in, and its tests take seconds, which no shared start saves.
-- A file with a handful of mutants gains nothing, or loses a few seconds: the tests are compiled and run without a mutant as a program and, when a mutant is left for a start of the test runner, the usual way as well. That is the example.
-- No file fell back as a whole, and no test run had to be ended.
+- **The statuses of every mutant were the same either way**, report against report: the same mutants, places and statuses, for the 2,799 mutants of the gates and the 22 of the example, in the one pair of runs that was made. So they are for the files of [`test/fixtures/hazards`](test/fixtures/hazards), which a test of this package requires in every run of the tests.
+- A file with quick tests whose mutants can nearly all be built in took a bit less than half the time (`merge.dart`: 45 s against 101 s for 264 mutants; `driver.dart`: 57 s against 136 s for 304).
+- The gate that takes most of the time gained least (`typed_mutators.dart`: 5.8 min against 9.2 min): 179 of the 483 mutants of that file that compile are in `const` tables and cannot be built in, and its tests take seconds, which nothing here saves.
+- A file with a handful of mutants loses a few seconds (`mutant.dart`, 7 mutants: 6 s against 4 s): the tests are compiled and run without a mutant as a program before the first mutant and, when a mutant is left for a start of the test runner, the usual way as well.
+- No file fell back as a whole, and no process had to be ended.
 
 A second run without `--force` and without a change takes under a second, and makes no copy.
 
