@@ -460,7 +460,7 @@ Future<void> main(List<String> arguments) async {
     tests.main();
   });
   _note('declared');
-  await pumpEventQueue();
+  await pumpEventQueue(times: 20);
   final engine = Engine(stopOnFirstFailure: id != -1)
     ..suiteSink.add(
       RunnerSuite(

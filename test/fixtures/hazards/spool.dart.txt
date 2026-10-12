@@ -23,12 +23,12 @@ int within(int size, int least, int most) =>
 /// (`.note`) and without what is not yet unpacked (`.part`). None in a
 /// directory that is not there.
 int waiting(String path) {
-  final dir = Directory(path);
-  if (!dir.existsSync()) {
+  final folder = Directory(path);
+  if (!folder.existsSync()) {
     return 0;
   }
   var count = 0;
-  for (final entity in dir.listSync()) {
+  for (final entity in folder.listSync()) {
     if (entity.path.endsWith('.note')) {
       continue;
     }
