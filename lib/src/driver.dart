@@ -155,17 +155,15 @@ List<String>? dartOf(List<String> command) =>
     ? command.sublist(0, command.length - 1)
     : null;
 
-/// The command that compiles the driver [driver] once, to [program].
+/// The command that compiles the driver [driver] once, to the program
+/// [program]: ahead of time, so that a start of it costs next to nothing,
+/// and with assertions, which the test runner runs tests with.
 List<String> compileCommand(List<String> dart, String driver, String program) =>
-    [...dart, 'compile', 'kernel', driver, '-o', program];
+    [...dart, 'compile', 'exe', '--enable-asserts', driver, '-o', program];
 
 /// The command that runs the compiled driver [program] on the mutant [id]
 /// ([noMutant] for none), in a process of its own.
-List<String> driverCommand(List<String> dart, String program, int id) => [
-  ...dart,
-  program,
-  '$id',
-];
+List<String> driverCommand(String program, int id) => [program, '$id'];
 
 /// `package:test/test.dart` when the package with the package configuration
 /// [packageConfig] has `test`, and `test_api`, from which a driver reads

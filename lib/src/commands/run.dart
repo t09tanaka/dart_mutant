@@ -1006,7 +1006,7 @@ Future<int> _locked(
             io.out(
               '  $path: ${built.ids.length} of ${mutants.length} mutant(s) '
               'built in, each run by a process of its own, with '
-              '"${dart!.join(' ')} <the tests, compiled once> <mutant>"'
+              '"<the tests, compiled once with ${dart!.join(' ')}> <mutant>"'
               '${drivers == 1 ? '' : ', $drivers at a time'}'
               '${said ? '' : ' ($refused do not compile)'}',
             );

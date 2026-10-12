@@ -418,8 +418,8 @@ dev_dependencies:
       contains(
         matches(
           r'^  lib/sum\.dart: \d+ of \d+ mutant\(s\) built in, each run '
-          r'by a process of its own, with ".*dart <the tests, compiled '
-          r'once> <mutant>"',
+          r'by a process of its own, with "<the tests, compiled once with '
+          r'.*dart> <mutant>"',
         ),
       ),
     );

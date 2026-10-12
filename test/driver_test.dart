@@ -301,22 +301,18 @@ void main() {
   });
 
   test('compileCommand and driverCommand', () {
-    expect(compileCommand(['fvm', 'dart'], 'test/d_0.dart', '/s/d_0.dill'), [
+    expect(compileCommand(['fvm', 'dart'], 'test/d_0.dart', '/s/d_0'), [
       'fvm',
       'dart',
       'compile',
-      'kernel',
+      'exe',
+      '--enable-asserts',
       'test/d_0.dart',
       '-o',
-      '/s/d_0.dill',
+      '/s/d_0',
     ]);
-    expect(driverCommand(['fvm', 'dart'], '/s/d_0.dill', 12), [
-      'fvm',
-      'dart',
-      '/s/d_0.dill',
-      '12',
-    ]);
-    expect(driverCommand(['dart'], 'd.dill', -1), ['dart', 'd.dill', '-1']);
+    expect(driverCommand('/s/d_0', 12), ['/s/d_0', '12']);
+    expect(driverCommand('d', -1), ['d', '-1']);
   });
 
   group('testLibraryOf', () {
@@ -518,6 +514,15 @@ void main(List<String> arguments) {
         of(
           [0, 255],
           ['declared 0', 'fail 0 0', 'declared 1', 'pass 1 0'],
+          tests: 2,
+        ).outcome,
+        Outcome.undecided,
+      );
+      // Every test passed, and one of the processes says otherwise.
+      expect(
+        of(
+          [0, 255],
+          ['declared 0', 'pass 0 0', 'declared 1', 'pass 1 0'],
           tests: 2,
         ).outcome,
         Outcome.undecided,
