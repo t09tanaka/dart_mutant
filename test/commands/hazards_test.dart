@@ -66,6 +66,12 @@ import 'package:test/test.dart';
 ///   what clears it. Mutants that share a process, each in an isolate of
 ///   its own, share that file: the mutant that empties the clearing code
 ///   was killed there by what the mutant before it had left.
+/// - `spool`: what is not run after a test failed, and leaves a file in the
+///   package when it is: a `tearDown` that writes a note when its `setUp`
+///   did not run, and the `setUpAll` of a later group, whose test takes
+///   away what it puts there. The mutants that count such a file fail on
+///   it, and on nothing a start of the test runner with `--fail-fast`
+///   leaves.
 typedef _Run = ({
   Map<String, List<String>> mutants,
   int exitCode,
@@ -98,6 +104,7 @@ void main() {
     'outside',
     'halt',
     'ledger',
+    'spool',
     'share',
     'diag',
     'whoami',

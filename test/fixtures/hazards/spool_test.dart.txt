@@ -1,0 +1,63 @@
+import 'dart:io';
+
+import 'package:hazard_fixture/spool.dart';
+import 'package:test/test.dart';
+
+void main() {
+  group('sizes', () {
+    test('total, fits, pages and within', () {
+      expect(total([1, 2, 3]), 6);
+      expect(fits(0, 5), isTrue);
+      expect(fits(5, 5), isTrue);
+      expect(fits(-1, 5), isFalse);
+      expect(fits(6, 5), isFalse);
+      expect(pages(10, 5), 2);
+      expect(pages(11, 5), 3);
+      expect(within(4, 2, 8), 4);
+      expect(within(1, 2, 8), 2);
+      expect(within(9, 2, 8), 8);
+      expect(within(2, 2, 8), 2);
+      expect(within(8, 2, 8), 8);
+    });
+  });
+
+  group('the spool', () {
+    Directory? spool;
+
+    setUp(() => spool = Directory('spool')..createSync());
+
+    // Takes the spool away. When there is none, its setUp did not run, and
+    // it leaves a note in the queue: no test that is run leaves one.
+    tearDown(() {
+      final dir = spool;
+      spool = null;
+      if (dir == null) {
+        File('queue/lost.note').createSync(recursive: true);
+      } else {
+        dir.deleteSync(recursive: true);
+      }
+    });
+
+    test('a job in the spool waits', () {
+      File('spool/a.job').createSync();
+      expect(waiting('spool'), 1);
+    });
+
+    test('nothing waits in the queue or on the shelf', () {
+      expect(waiting('queue'), 0);
+      expect(waiting('shelf'), 0);
+    });
+  });
+
+  group('the shelf', () {
+    // Starts to unpack a job, which the test of the group ends and takes
+    // away: after a setUpAll whose test is not run, the half of it stays.
+    setUpAll(() => File('shelf/old.part').createSync(recursive: true));
+
+    test('a job waits when it is unpacked', () {
+      File('shelf/old.part').renameSync('shelf/old.job');
+      expect(waiting('shelf'), 1);
+      Directory('shelf').deleteSync(recursive: true);
+    });
+  });
+}
