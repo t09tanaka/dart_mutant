@@ -22,6 +22,20 @@ const mutantsPerDriver = 4;
 int driversFor({required int mutants, required int jobs}) =>
     min(jobs, (mutants / mutantsPerDriver).ceil());
 
+/// How many mutants of a file there have to be to run for them to be built
+/// into the file. With fewer, each gets a start of the test runner of its
+/// own from the beginning: compiling the tests once and running them without
+/// a mutant first and last costs more than it saves below a dozen mutants or
+/// so, saves a few seconds at most up to this number, and is lost when the
+/// file is given up after all.
+const mutantsToBuildIn = 25;
+
+/// Whether [mutants] mutants of a file are enough to build them into it
+/// ([from] of them are, see [mutantsToBuildIn]), or each gets a start of the
+/// test runner of its own from the beginning.
+bool paysToBuildIn(int mutants, {int from = mutantsToBuildIn}) =>
+    mutants >= from;
+
 /// Where the drivers of a file are written, and where they write down how
 /// their tests went: a directory of the tool in the working copy, relative
 /// to it. A driver is the program that runs a test file of a file on one

@@ -6,6 +6,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_mutant/dart_mutant.dart';
+import 'package:dart_mutant/src/args.dart';
+import 'package:dart_mutant/src/commands/run.dart';
+import 'package:dart_mutant/src/driver.dart';
 import 'package:test/test.dart';
 
 /// `dart_mutant run` against the real thing: the package in example/,
@@ -40,9 +43,20 @@ void main() {
 
   tearDownAll(() => dir.deleteSync(recursive: true));
 
-  for (final oneByOne in [false, true]) {
+  // The example has fewer mutants than are built in ([mutantsToBuildIn]):
+  // they are built in when that number is 0, and by default each gets a
+  // start of the test runner, as with --one-by-one, and a line says so.
+  for (final (oneByOne, buildInFrom, printed) in [
+    (false, 0, 4),
+    (false, mutantsToBuildIn, 3),
+    (true, mutantsToBuildIn, 2),
+  ]) {
     test('every mutant of the example, '
-        '${oneByOne ? 'each with a start of the test runner of its own' : 'in one start of the test runner'}: '
+        '${oneByOne
+            ? 'each with a start of the test runner of its own'
+            : buildInFrom == 0
+            ? 'in one start of the test runner'
+            : 'as it is run by default'}: '
         'what the analyzer refuses is not run, what is run is killed or '
         'survives, and none of it fails to compile in the test run', () async {
       out.clear();
@@ -51,7 +65,7 @@ void main() {
         for (final source in sources)
           File('${dir.path}/$source').readAsBytesSync(),
       ];
-      final code = await run([
+      final parsed = parseArgs([
         'run',
         '--force',
         if (oneByOne) '--one-by-one',
@@ -64,7 +78,12 @@ void main() {
         '--',
         Platform.resolvedExecutable,
         'test',
-      ], Io(out: out.add, err: err.add));
+      ]);
+      final code = await runMutation(
+        (parsed as RunCommandArgs).run,
+        Io(out: out.add, err: err.add),
+        buildInFrom: buildInFrom,
+      );
 
       final report =
           jsonDecode(
@@ -136,7 +155,11 @@ void main() {
       );
       expect(code, 1);
       // With one start for the mutants, also what it killed and what is left.
-      expect(out, hasLength(oneByOne ? 2 : 4));
+      expect(out, hasLength(printed));
+      expect(
+        out.where((line) => line.contains('fewer than $mutantsToBuildIn: ')),
+        hasLength(printed == 3 ? 1 : 0),
+      );
       expect(err, [
         'dart_mutant run: 2 surviving mutant(s)',
         '  - lib/discount.dart:7:30 / NumberLiteral / 0 → 1 (Survived)',

@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:dart_mutant/dart_mutant.dart';
 import 'package:dart_mutant/src/args.dart';
 import 'package:dart_mutant/src/commands/run.dart';
+import 'package:dart_mutant/src/driver.dart';
 import 'package:test/test.dart';
 
 /// The condition under which a mutant may be run in another way than by a
@@ -139,6 +140,11 @@ void main() {
     // Every failure of it is printed in the form of a compiler error.
     'diag': '4 of 4 built in, 0 killed there, 4 left',
   };
+
+  /// Files with fewer mutants than are built in ([mutantsToBuildIn]), and how
+  /// many of each compile: without the 0 of the run above they are run as
+  /// with `--one-by-one`.
+  const fewMutants = {'registry': 2, 'place': 2, 'gate': 4};
   final givenUp = {
     for (final name in ['background', 'codec', 'shout'])
       name:
@@ -185,9 +191,18 @@ void main() {
 
   /// The mutants of the package, by file, each as `id mutator replacement
   /// place: status`, with the exit code and what the run printed.
-  Future<_Run> mutate({required bool oneByOne}) async {
+  ///
+  /// [buildInFrom] is the number of mutants from which those of a file are
+  /// built into it: 0 for the run that is compared, so that every file goes
+  /// that way, however few mutants it has. [only] limits the run to these
+  /// files.
+  Future<_Run> mutate({
+    required bool oneByOne,
+    int buildInFrom = 0,
+    List<String> only = const [],
+  }) async {
     final lines = <String>[];
-    final exitCode = await run([
+    final parsed = parseArgs([
       'run',
       '--dir',
       dir.path,
@@ -197,10 +212,16 @@ void main() {
       '--jobs',
       jobs,
       if (oneByOne) '--one-by-one',
+      for (final name in only) ...['--only', 'lib/$name.dart'],
       '--',
       Platform.resolvedExecutable,
       'test',
-    ], Io(out: lines.add, err: lines.add));
+    ]);
+    final exitCode = await runMutation(
+      (parsed as RunCommandArgs).run,
+      Io(out: lines.add, err: lines.add),
+      buildInFrom: buildInFrom,
+    );
     final report =
         (jsonDecode(
                   File(
@@ -377,6 +398,34 @@ dev_dependencies:
       ),
       hasLength(givenUp.length),
       reason: together.lines.join('\n'),
+    );
+  });
+
+  test('a file with few mutants is not built in: each of its mutants gets a '
+      'start of the test runner from the beginning, the run says so, and '
+      'the statuses are those of --one-by-one', () async {
+    // After the tests above: the report of this run has these files only.
+    final few = await mutate(
+      oneByOne: false,
+      buildInFrom: mutantsToBuildIn,
+      only: fewMutants.keys.toList(),
+    );
+    for (final MapEntry(key: name, value: count) in fewMutants.entries) {
+      final path = 'lib/$name.dart';
+      expect(few.mutants[path], usual.mutants[path], reason: path);
+      expect(
+        few.lines,
+        contains(
+          '  $path: $count mutant(s) to run, fewer than $mutantsToBuildIn: '
+          'not built in, a start of the test runner for each',
+        ),
+        reason: few.lines.join('\n'),
+      );
+    }
+    expect(
+      few.lines.where((line) => line.contains('mutant(s) built in,')),
+      isEmpty,
+      reason: few.lines.join('\n'),
     );
   });
 

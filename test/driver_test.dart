@@ -42,6 +42,17 @@ void main() {
     expect(driversFor(mutants: 100, jobs: 1), 1);
   });
 
+  test('paysToBuildIn: from mutantsToBuildIn mutants on, or from the number '
+      'that is given', () {
+    expect(mutantsToBuildIn, 25);
+    expect(paysToBuildIn(mutantsToBuildIn - 1), isFalse);
+    expect(paysToBuildIn(mutantsToBuildIn), isTrue);
+    expect(paysToBuildIn(mutantsToBuildIn + 1), isTrue);
+    expect(paysToBuildIn(1, from: 0), isTrue);
+    expect(paysToBuildIn(1, from: 1), isTrue);
+    expect(paysToBuildIn(1, from: 2), isFalse);
+  });
+
   test('packageNameOf', () {
     expect(packageNameOf('name: a_b1\nversion: 1.0.0\n'), 'a_b1');
     expect(packageNameOf('# a pubspec\r\nname:   "quoted"\r\n'), 'quoted');

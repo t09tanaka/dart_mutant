@@ -584,7 +584,9 @@ Future<({String? aborted, String? inPlace})> _runInCopies({
 /// time of the run without a mutant, and [memoryLimitOf] the memory it may
 /// hold, from what the run without a mutant held. They are parameters for
 /// the tests of this package only; the command line always uses
-/// [processLimit] and [memoryLimit].
+/// [processLimit] and [memoryLimit]. So is [buildInFrom], the number of
+/// mutants from which those of a file are built into it: the command line
+/// always uses [mutantsToBuildIn].
 ///
 /// Returns the exit code: 0 when no mutant survived, 1 when one did or a
 /// file could not be mutation tested, 130 / 143 / 129 when interrupted.
@@ -595,6 +597,7 @@ Future<int> runMutation(
   Io io, {
   Duration Function(Duration baseline) limitOf = processLimit,
   int Function(int baseline) memoryLimitOf = memoryLimit,
+  int buildInFrom = mutantsToBuildIn,
 }) async {
   if (!Directory(args.dir).existsSync()) {
     throw UsageError('--dir ${args.dir} is not a directory');
@@ -643,6 +646,7 @@ Future<int> runMutation(
       oldReport: oldReport,
       limitOf: limitOf,
       memoryLimitOf: memoryLimitOf,
+      buildInFrom: buildInFrom,
     );
   } finally {
     lock.release();
@@ -662,6 +666,7 @@ Future<int> _locked(
   required String? oldReport,
   required Duration Function(Duration baseline) limitOf,
   required int Function(int baseline) memoryLimitOf,
+  required int buildInFrom,
 }) async {
   // A report of an earlier run must not be read as the result of this one
   // if this one writes none. With --only that holds for the files of this
@@ -860,6 +865,9 @@ Future<int> _locked(
       // can be done, or else why it is not done.
       BuiltIn? built;
       String? notBuilt;
+      // How many mutants there are to run, when that is too few to build
+      // them in.
+      int? few;
       final reusable = reusableResults(carried[path], input);
       if (reusable != null) {
         mutants = [for (final result in reusable) result.mutant];
@@ -902,22 +910,27 @@ Future<int> _locked(
           if (schemata &&
               compiling.isNotEmpty &&
               reasons.length == mutants.length) {
-            notBuilt =
-                fileObstacle(source) ??
-                targetObstacle(source) ??
-                testsObstacle(testTexts);
-            if (notBuilt == null) {
-              try {
-                built = await buildIn(
-                  analysis,
-                  path,
-                  source,
-                  mutants,
-                  compiling,
-                  stopped: () => signals.signal != null,
-                );
-              } on AnalysisUnavailable catch (error) {
-                notBuilt = 'cannot be analyzed that way (${error.message})';
+            if (!paysToBuildIn(compiling.length, from: buildInFrom)) {
+              // Before they are built in: that is part of what is saved.
+              few = compiling.length;
+            } else {
+              notBuilt =
+                  fileObstacle(source) ??
+                  targetObstacle(source) ??
+                  testsObstacle(testTexts);
+              if (notBuilt == null) {
+                try {
+                  built = await buildIn(
+                    analysis,
+                    path,
+                    source,
+                    mutants,
+                    compiling,
+                    stopped: () => signals.signal != null,
+                  );
+                } on AnalysisUnavailable catch (error) {
+                  notBuilt = 'cannot be analyzed that way (${error.message})';
+                }
               }
             }
           }
@@ -966,6 +979,12 @@ Future<int> _locked(
           io.err(
             '$executable run: $path $notBuilt; each of its mutants gets a '
             'start of the test runner of its own',
+          );
+        }
+        if (instead == null && few != null) {
+          io.out(
+            '  $path: $few mutant(s) to run, fewer than $buildInFrom: not '
+            'built in, a start of the test runner for each',
           );
         }
         final refused = own

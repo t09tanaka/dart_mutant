@@ -51,6 +51,9 @@ is run by a process of its own. The statuses are those of 0.1.1, which
   mutant has its own.
 - Not built in, each with a start of the test runner per mutant and a line
   that says why:
+  - a file with fewer than 25 mutants to run: compiling its tests once and
+    running them without a mutant takes longer there than the starts of the
+    test runner it saves, or saves a few seconds at most;
   - a package whose test command does not end in `dart test`, and one whose
     `dart_test.yaml` says more than the names of tags (the tests are run
     without the test runner, which is what reads that file);

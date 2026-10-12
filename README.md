@@ -9,16 +9,15 @@ Mutation testing for Dart and Flutter.
 - **Mutants from the syntax tree and from resolved types.** Operators, conditions, blocks and literals are found in the syntax tree. Members of `num`, `String`, `Iterable`, `Map`, `DateTime` and `Duration` and the values a function returns are mutated by the types the analyzer resolves, so `first` of your own class is not taken for `Iterable.first`. Numbers and guards on `null` get mutants of their own.
 - **Mutants that cannot compile are found before a test is run.** Dart is null-safe and statically typed, so many textbook mutants are not programs. Every mutant is checked by the analyzer in memory, in a few milliseconds; only the ones that compile cost a test run.
 - **Nothing to add to your project.** It runs as a program of its own and reads the package the way `dart` and `flutter` do. It does not have to resolve next to your code generators.
-- **The tests of a file are compiled once for all its mutants.** The mutants of a file are built into it behind a variable, its tests are compiled once with them, and that program is started once per mutant, each time as a process of its own: a mutant costs a tenth of a second or two instead of a start of the test runner. Only `Killed` is taken from that, and a test of this package holds the statuses to those of a start of the test runner per mutant on tests that are easy to get wrong; see [below](#the-tests-of-a-file-compiled-once-and-a-process-per-mutant). (For a pure Dart package; a Flutter package gets a start of `flutter test` per mutant.)
+- **The tests of a file are compiled once for all its mutants.** The mutants of a file are built into it behind a variable, its tests are compiled once with them, and that program is started once per mutant, each time as a process of its own: a mutant costs a tenth of a second or two instead of a start of the test runner. Only `Killed` is taken from that, and a test of this package holds the statuses to those of a start of the test runner per mutant on tests that are easy to get wrong; see [below](#the-tests-of-a-file-compiled-once-and-a-process-per-mutant). (For a pure Dart package, and a file with 25 mutants or more to run: with fewer, and in a Flutter package, each mutant gets a start of the test runner.)
 - **In copies of the package, several at a time.** The mutants are put into working copies below `.dart_tool`, one test run in each, so your own files are not written while it runs. A second `dart_mutant` in the same package is turned away instead of getting in the way of the first.
 - **A report other tools can read, and a page to look at.** The result is written in the [mutation-testing-elements](https://github.com/stryker-mutator/mutation-testing-elements) JSON schema, and with `--html` as a page that shows every mutant at its place in the source.
 
 ```
 $ dart_mutant run lib/discount.dart
-  lib/discount.dart: 18 of 22 mutant(s) built in, each run by a process of its own, with "dart <the tests, compiled once> <mutant>" (4 do not compile)
-  lib/discount.dart: 16 killed with the mutants built in; 2 not killed that way get a start of their own
-  lib/discount.dart: 2 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 2 at a time
-  lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (16.5s)
+  lib/discount.dart: 18 mutant(s) to run, fewer than 25: not built in, a start of the test runner for each
+  lib/discount.dart: 18 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 3 at a time (4 do not compile)
+  lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (8.2s)
 dart_mutant run: 2 surviving mutant(s)
   - lib/discount.dart:7:30 / NumberLiteral / 0 → 1 (Survived)
   - lib/discount.dart:8:39 / MethodExpression / round → ceil (Survived)
@@ -109,7 +108,7 @@ The keys are `version` and `targets`, and in a target `file` and `tests`. It is 
 
 ### What it prints, and the exit code
 
-For each file a line when its mutants are built in and their processes start, a line that says how many were killed that way, a line when the tests start on the mutants that get a start of their own (with `, 3 at a time` when they are run in working copies), and a line with the counts. Then, under a line that counts them (`dart_mutant run: 2 surviving mutant(s)`), the survivors, one line each: `file:line:column / Mutator / original → replacement (Survived)`, the line `test_gates` writes for a mutant (text that spans lines is shown on one). The last line is `dart_mutant run: OK (…)` or `dart_mutant run: FAILED (…)` with the totals, and `dart_mutant merge: …` for `merge`.
+For each file a line when its mutants are built in and their processes start (or a line that says they are too few to build in), a line that says how many were killed that way, a line when the tests start on the mutants that get a start of their own (with `, 3 at a time` when they are run in working copies), and a line with the counts. Then, under a line that counts them (`dart_mutant run: 2 surviving mutant(s)`), the survivors, one line each: `file:line:column / Mutator / original → replacement (Survived)`, the line `test_gates` writes for a mutant (text that spans lines is shown on one). The last line is `dart_mutant run: OK (…)` or `dart_mutant run: FAILED (…)` with the totals, and `dart_mutant merge: …` for `merge`.
 
 The lines of the files and the `OK` line go to stdout. What is wrong goes to stderr: the survivors, a file that could not be mutation tested, the `FAILED` line. Wrong usage is answered with `dart_mutant: <what is wrong>`, an empty line and the help (`--help`); a plan file that cannot be used with the first of these alone, since the help would not say what is wrong with it.
 
@@ -283,7 +282,7 @@ The copies are inside `.dart_tool`, so the analyzer of your editor, `dart analyz
 
 A start of the test runner per mutant is where the time goes: the runner starts, the tests are compiled, and only then do they run. So the mutants of a file are **built into the file** once, each behind the same variable, the tests of the file are **compiled once** with them, and that program is **started once per mutant, each time as a process of its own**. (Building the mutants in is known as mutant schemata.)
 
-The run at the top of this page shows it: 18 of the 22 mutants of `example/lib/discount.dart` compile and are built in, 16 of them are killed by their process, and the two that no test fails on get a start of the test runner of their own, which lets them survive.
+A file with fewer than 25 mutants to run is left out of this, which the run at the top of this page shows: the 18 mutants of `example/lib/discount.dart` that compile each get a start of the test runner. For a file with more, the run says how many mutants were built in (`55 of 59 mutant(s) built in, …`), how many of them were killed by their process, and how many got a start of the test runner of their own after that, which is what lets a mutant survive.
 
 The mutants, their numbers, the report and the exit code are those of a run with `--one-by-one`. **Only `Killed` is taken from these processes**; every other mutant gets a start of the test runner of its own before it is reported. That the statuses are those of a start of the test runner per mutant is required by a test of this package, on tests that are easy to get wrong ([`test/commands/hazards_test.dart`](test/commands/hazards_test.dart)), and it was measured on more (see [How long it takes](#how-long-it-takes)). It is not proven for every test there can be: what is not guaranteed is under [What can still go wrong](#what-can-still-go-wrong).
 
@@ -363,7 +362,7 @@ The processes are started in the working copies of `--jobs`: when a file has mor
 - **The choices are checked one by one.** That the program keeps its static types is asked of every choice alone; of all choices of a file together only that they compile.
 - **The program is not the test runner, and code can tell.** The file and its test are searched for the names that ask (see above); a library they import is not. The stack is another one as well (the frames below a test, and how many there are), and so is the directory `.dart_tool/dart_mutant_driver/` of the working copy, which is there while these processes run. Code that goes another way for any of that, with a mutant and not without, can be killed here and survive a start of the test runner.
 - **The file under test is another text**: with every mutant built in, where a start of the test runner has the one mutant written into it. Code that reads the source of the file under test while its tests run sees the difference.
-- **It does not always pay.** A mutant that survives costs its tests in a process and then a start of the test runner. A file whose mutants mostly survive, or mostly cannot be built in, takes about as long as with `--one-by-one`; so does a file whose tests take seconds, where the time was never the start of the runner.
+- **It does not always pay.** The tests are compiled and run without a mutant before the first mutant, which a file with few mutants does not get back: **a file with fewer than 25 mutants to run (those that compile, of this part with `--shard`) is not built in**, each of its mutants gets a start of the test runner from the beginning, and a line says so (`18 mutant(s) to run, fewer than 25: not built in, …`). A mutant that survives costs its tests in a process and then a start of the test runner. A file whose mutants mostly survive, or mostly cannot be built in, takes about as long as with `--one-by-one`; so does a file whose tests take seconds, where the time was never the start of the runner.
 - **A test whose result depends on how long something takes.** The program is compiled with the code of one run of the tests already compiled in, and has no test runner to start: the same code is faster in it. A test that only passes because a first call takes a measurable time (`expect(watch.elapsedMicroseconds, greaterThan(0))`) can fail here and pass under the test runner, and nothing in the file says so.
 - **A test that is slow because the machine is busy** fails as it does under the test runner; when that is a test without a mutant, the whole file falls back to a start of the test runner per mutant.
 
@@ -417,18 +416,16 @@ One file with many mutants, or with slow tests, takes as long as it takes: `--jo
 
 ```
 $ dart_mutant run lib/discount.dart --shard 1/2 --report reports/parts/1.json
-  lib/discount.dart: 9 of 22 mutant(s) built in, each run by a process of its own, with "dart <the tests, compiled once> <mutant>" (2 do not compile)
-  lib/discount.dart: 8 killed with the mutants built in; 1 not killed that way get a start of their own
-  lib/discount.dart: 1 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 1 at a time
-  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (12.5s)
+  lib/discount.dart: 9 mutant(s) to run, fewer than 25: not built in, a start of the test runner for each
+  lib/discount.dart: 9 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 3 at a time (2 do not compile)
+  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (5.9s)
 dart_mutant run: 1 surviving mutant(s)
   - lib/discount.dart:7:30 / NumberLiteral / 0 → 1 (Survived)
 dart_mutant run: FAILED (shard 1/2: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run))
 $ dart_mutant run lib/discount.dart --shard 2/2 --report reports/parts/2.json
-  lib/discount.dart: 9 of 22 mutant(s) built in, each run by a process of its own, with "dart <the tests, compiled once> <mutant>" (2 do not compile)
-  lib/discount.dart: 8 killed with the mutants built in; 1 not killed that way get a start of their own
-  lib/discount.dart: 1 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 1 at a time
-  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (12.4s)
+  lib/discount.dart: 9 mutant(s) to run, fewer than 25: not built in, a start of the test runner for each
+  lib/discount.dart: 9 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 3 at a time (2 do not compile)
+  lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (5.9s)
 dart_mutant run: 1 surviving mutant(s)
   - lib/discount.dart:8:39 / MethodExpression / round → ceil (Survived)
 dart_mutant run: FAILED (shard 2/2: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run))
@@ -644,7 +641,7 @@ Measured on the same machine with `--force --jobs 3`, while it was nearly idle (
 - **The statuses of every mutant were the same either way**, report against report: the same mutants, places and statuses, for the 2,799 mutants of the gates and the 22 of the example, in the one pair of runs that was made. So they are for the files of [`test/fixtures/hazards`](test/fixtures/hazards), which a test of this package requires in every run of the tests.
 - A file with quick tests whose mutants can nearly all be built in took a bit less than half the time (`merge.dart`: 45 s against 101 s for 264 mutants; `driver.dart`: 57 s against 136 s for 304).
 - The gate that takes most of the time gained least (`typed_mutators.dart`: 5.8 min against 9.2 min): 179 of the 483 mutants of that file that compile are in `const` tables and cannot be built in, and its tests take seconds, which nothing here saves.
-- A file with a handful of mutants loses a few seconds (`mutant.dart`, 7 mutants: 6 s against 4 s): the tests are compiled and run without a mutant as a program before the first mutant and, when a mutant is left for a start of the test runner, the usual way as well.
+- A file with a handful of mutants lost a few seconds (`mutant.dart`, 7 mutants: 6 s against 4 s): the tests are compiled and run without a mutant as a program before the first mutant and, when a mutant is left for a start of the test runner, the usual way as well. Since then a file with fewer than 25 mutants to run is not built in, and takes what it takes with `--one-by-one`: this file, and the example.
 - No file fell back as a whole, and no process had to be ended.
 
 A second run without `--force` and without a change takes under a second, and makes no copy.
@@ -686,7 +683,7 @@ In the workflow ([`.github/workflows/mutation.yml`](.github/workflows/mutation.y
 
 ```bash
 dart tool/self_mutation.dart --matrix                                             # the jobs, as JSON
-dart run tool/self_mutation.dart --gate lib/src/typed_mutators.dart --shard 1/4   # one part: run, not judged
+dart run tool/self_mutation.dart --gate lib/src/typed_mutators.dart --shard 1/7   # one part: run, not judged
 dart run tool/self_mutation.dart --merge parts                                    # merge the parts of each such gate, and judge
 ```
 

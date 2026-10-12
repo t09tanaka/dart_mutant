@@ -370,6 +370,9 @@ dev_dependencies:
     Shard? shard,
     String? reportPath,
     String? plan,
+    // However few mutants the file has: these tests are about the mutants
+    // that are built in.
+    int buildInFrom = 0,
   }) async {
     final before = tree();
     await runMutation(
@@ -387,6 +390,7 @@ dev_dependencies:
       Io(out: out.add, err: err.add),
       limitOf: limit ?? processLimit,
       memoryLimitOf: memory ?? memoryLimit,
+      buildInFrom: buildInFrom,
     );
     expect(tree(), before, reason: 'the package was changed');
     expect(Directory('${dir.path}/$stateDir/work').existsSync(), isFalse);
@@ -417,6 +421,41 @@ dev_dependencies:
         line.contains('killed with the mutants built in'),
     orElse: () => '',
   );
+
+  test('a file with fewer mutants to run than are built in is run with a '
+      'start of the test runner per mutant from the beginning, and says so; '
+      'with as many it is built in; the statuses are the same', () async {
+    final toRun = RegExp(
+      r'^  lib/either\.dart: (\d+) mutant\(s\) to run, fewer than (\d+): not '
+      r'built in, a start of the test runner for each$',
+    );
+    bool builtIn(String line) => line.contains('mutant(s) built in,');
+
+    final never = await mutate(
+      'lib/either.dart',
+      schemata: true,
+      buildInFrom: 1000,
+    );
+    final said = out.map(toRun.firstMatch).nonNulls.single;
+    final count = int.parse(said.group(1)!);
+    expect(said.group(2), '1000');
+    expect(out.where(builtIn), isEmpty);
+
+    out.clear();
+    final enough = await mutate(
+      'lib/either.dart',
+      schemata: true,
+      buildInFrom: count,
+    );
+    expect(out.where(toRun.hasMatch), isEmpty);
+    expect(out.where(builtIn), hasLength(1));
+
+    out.clear();
+    final oneByOne = await mutate('lib/either.dart', schemata: false);
+    expect(out.where(toRun.hasMatch), isEmpty);
+    expect(never, oneByOne);
+    expect(enough, oneByOne);
+  });
 
   test('a mutant that never ends does not hold the others: the test run is '
       'ended, the mutant is measured the usual way, and another one runs '
