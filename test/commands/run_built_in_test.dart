@@ -240,6 +240,29 @@ void main() {
 }
 ''';
 
+const alone = 'int one() => 1;\n';
+
+/// Asked by the test, in a file of its own: the tool looks for the question
+/// in the file under test and in its test only.
+const aloneWho = '''
+import 'dart:isolate';
+
+bool asProgram() => Isolate.current.debugName == 'main';
+''';
+
+const aloneTest = '''
+import 'package:built_in_fixture/alone.dart';
+import 'package:built_in_fixture/alone_who.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('one, where the tests are the program', () {
+    expect(asProgram(), isTrue);
+    expect(one(), 1);
+  });
+}
+''';
+
 /// A run with the mutants of a file built in, its tests compiled once and
 /// each mutant run by a process of its own, with the real `dart`, on a
 /// package in a temporary directory. That every mutant has the status
@@ -303,6 +326,9 @@ dev_dependencies:
         ],
       }),
     );
+    write('lib/alone.dart', alone);
+    write('lib/alone_who.dart', aloneWho);
+    write('test/alone_test.dart', aloneTest);
     write('lib/square.dart', square);
     write('test/square_test.dart', squareTest);
     // The packages are in the cache: this package depends on `test` too.
@@ -707,6 +733,28 @@ dev_dependencies:
       );
     },
   );
+
+  test('tests that pass as a program and not under the test runner: every '
+      'mutant is killed by its process, the tests are then run once the '
+      'usual way, and nothing of the processes is used', () async {
+    final builtIn = await mutate('lib/alone.dart', schemata: true);
+    expect(builtIn, isEmpty);
+    expect(
+      builtInLine('lib/alone.dart'),
+      '  lib/alone.dart: 2 killed with the mutants built in',
+    );
+    expect(
+      err,
+      containsAllInOrder([
+        'dart_mutant run: lib/alone.dart: the tests do not pass with a start '
+            'of the test runner of their own in a working copy; nothing of '
+            'the mutants that were built in is used',
+        startsWith('dart_mutant run: lib/alone.dart has tests that fail in a '),
+        'dart_mutant run: 1 file(s) could not be mutation tested',
+        startsWith('  - lib/alone.dart: the tests fail without a mutant'),
+      ]),
+    );
+  });
 
   test('with --shard each part builds in its own mutants, and the parts '
       'put together are the run that was not divided', () async {
