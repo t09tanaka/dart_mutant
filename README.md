@@ -15,7 +15,7 @@ Mutation testing for Dart and Flutter.
 
 ```
 $ dart_mutant run lib/discount.dart
-  lib/discount.dart: 18 of 22 mutant(s) built in, each run by a test file of its own, with "dart test --timeout 10s --concurrency 1 --reporter json" (4 do not compile)
+  lib/discount.dart: 18 of 22 mutant(s) built in, each run by a test file of its own, with "dart test --timeout 10s --concurrency 1 --reporter expanded" (4 do not compile)
   lib/discount.dart: 16 killed with the mutants built in; 2 not killed that way get a start of their own
   lib/discount.dart: 2 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 2 at a time
   lib/discount.dart: 22 mutants / killed 16 / survived 2 / timeout 0 / compile error 4 (4 found before the run) (16.5s)
@@ -105,7 +105,7 @@ The keys are `version` and `targets`, and in a target `file` and `tests`. It is 
 | `-v`, `--version` | Show the version                                                                                     |
 | `-- <command>`    | The command that runs test files                                                                     |
 
-**The test command** is `flutter test --no-pub` when the pubspec has a dependency from the Flutter SDK, and `dart test` otherwise. A command after `--` replaces it (`-- fvm flutter test --no-pub`). `--fail-fast --timeout 10s` and the test files are appended to it (`--timeout 10s --concurrency 1 --reporter json` and the test files of the mutants, where they share a start), so it has to be a `dart test` / `flutter test` of some kind. It is started in the package, without a shell.
+**The test command** is `flutter test --no-pub` when the pubspec has a dependency from the Flutter SDK, and `dart test` otherwise. A command after `--` replaces it (`-- fvm flutter test --no-pub`). `--fail-fast --timeout 10s` and the test files are appended to it (`--timeout 10s --concurrency 1 --reporter expanded` and the test files of the mutants, where they share a start), so it has to be a `dart test` / `flutter test` of some kind. It is started in the package, without a shell.
 
 ### What it prints, and the exit code
 
@@ -308,19 +308,24 @@ For every mutant, and for every test file of the file, a test file is written ne
 - a variable of the program that a test of another mutant changed is not seen: it was another isolate;
 - each of these test files starts in the current directory that the first of them started in, and with the exit code 0. A process shares both between its isolates, and a test can change them.
 
-The test command is started once with `--timeout 10s --concurrency 1 --reporter json` and these test files, and loads and runs them one after the other, in that order. The first one, one after every 25 mutants, and the last one run the tests **without a mutant**. The tool reads the result of every test as it comes; after the first failing test of a mutant its other tests are not run (the test file is told through a file).
+The test command is started once with `--timeout 10s --concurrency 1 --reporter expanded` and these test files, and loads and runs them one after the other, in that order. The first one, one after every 25 mutants, and the last one run the tests **without a mutant**. After the first failing test of a mutant its other tests are not run.
+
+**How a test went is not read from the output of the test runner.** Every one of these test files writes it down itself, in a file of the tool: that it was loaded, that it declared its tests, and after every run of a test, when its `tearDown`s have run, whether the test passed. (It asks the test runner, through `Invoker` of `package:test_api`, which is what `test` and `flutter_test` are built on, and is not part of the API of that package: with a version in which it is gone the test files do not compile, and every mutant gets a start of its own.) Nothing a test or the code under test prints can be taken for such a line.
+
+The output of the test runner is read for one thing: its own count. One line says how many tests had failed when it started on a test file, and its last line how many had at the end. **The two sides have to agree**: as many tests failed with a mutant as its test files wrote down. A failure that no test file saw is one more on the side of the test runner: a `setUpAll` or a `tearDownAll` that fails, an error that arrives when its test has ended.
 
 ### What is taken from it, and what is not
 
 | What the test file of a mutant shows | What happens |
 | ------------------------------------ | ------------ |
-| A test failed, and the tests without a mutant passed before it and after it | `Killed` |
+| A test file of the mutant wrote down that a test failed, the test runner counted as many failures as the test files of the mutant wrote down, and the tests without a mutant passed before it and after it | `Killed` |
+| The test runner counted another number of failures with the mutant than its test files wrote down (a `setUpAll` or `tearDownAll` that fails, an error that arrives when its test has ended) | The mutant gets a start of the test runner of its own, and is reported as that run says |
 | No test failed | The mutant gets a start of the test runner of its own, and is reported as that run says. **`Survived` is always the verdict of a run of its own** |
 | Code of the file ran in another isolate or process than the tests (see above) | Nothing these test runs reported is used. Every mutant of the file gets a start of its own, and a line says so |
 | The test file cannot be loaded with the mutant at work (`main()` throws) | The same: a run of its own tells a mutant that does not compile from one that fails |
 | Its tests did not end | The limit is that of a run of its own (three times the first run of the tests without a mutant, plus 20 seconds). The test run is ended with the processes it started, the mutant gets a start of its own, which decides whether it is a `Timeout`, and another test run is started for the mutants after it. The mutants since the tests last passed without a mutant get a start of their own as well |
 | The test run held more memory than its limit while the mutant was at work, see [Memory limit](#memory-limit) | The same: the test run is killed at once, the mutant gets a start of its own, which measures it by itself, and another test run is started for the mutants after it |
-| The tests fail without a mutant, at the start (they cannot be run this way) or later (something outside the program was left behind) | Nothing these test runs reported is used. Every mutant of the file gets a start of its own, and a line says which test failed |
+| The tests fail without a mutant, at the start (they cannot be run this way) or later (something outside the program was left behind), or the two sides do not agree about them; or the test runner ends by itself without saying how the tests ended, or with an exit code that says something else (a test that ends the process) | Nothing these test runs reported is used. Every mutant of the file gets a start of its own, and a line says which test failed |
 | Every mutant of the file is killed | The tests are run once the usual way, without a mutant, before that is believed |
 
 ### What cannot be built in
@@ -332,7 +337,7 @@ Run with a start of their own, and counted in the line of the file (`3 cannot be
 - A mutant that compiles in the program by itself but not with the mutants that are already in it (`does not compile together with the other mutants`). Two mutants that each take away one of two assignments to a variable are each a program; with both built in, the compiler sees a way on which the variable has no value, although no run ever takes it.
 - A whole file: a `part of` file (the test file of a mutant has to import the file to set the variable), a file that starts with a byte order mark, a file that uses a name that starts with `$dartMutant`, a file that imports `dart:isolate` (an isolate that it starts does not end with the test file of a mutant, and no mutant is at work in it).
 - The tests of a file, when they cannot be called as the test runner calls them: no `main()`, a `main` that takes arguments or is `async`, an annotation on the library (`@Timeout`, `@TestOn`, `@Retry`, `@Tags`, `@Skip`: it is for the test runner, which would not see it), a test file that imports `dart:isolate`, tests in more than one directory, a file whose name starts with `dart_mutant_` next to the tests. A line on stderr says which.
-- A package that cannot be run from a working copy (a pub workspace, a `path:` dependency outside the package), or whose package configuration has neither `test` nor `flutter_test`: every mutant gets a start of its own, as with `--one-by-one`.
+- A package that cannot be run from a working copy (a pub workspace, a `path:` dependency outside the package), or whose package configuration has neither `test` nor `flutter_test`, or not `test_api`: every mutant gets a start of its own, as with `--one-by-one`.
 - A file whose results are taken from the last run. Only its `Timeout`s are measured again, each with a start of its own.
 
 The initializer of a top-level variable or of a `static` field is no exception: it runs once in an isolate, and every mutant has its own.
@@ -391,7 +396,7 @@ void main() {
 
 Take the mutant `{ _names.clear(); }` → `{}`. In a run of its own the program has just started, there is nothing to clear, and both tests pass: `Survived`, which is the result (no test says what `clearNames()` is for). In the one isolate of 0.1.0 the tests of this mutant started with the names the rounds before had registered, the first test found more than its one, and the mutant was reported as `Killed`: a run on this file ended with `OK` and exit code 0 where it ends with a survivor and exit code 1. The tests without a mutant could not show it, because without a mutant the code that clears is at work.
 
-With an isolate per mutant there is no round before: this mutant starts with an empty list, as in a run of its own. The package above is one of the files of [`test/fixtures/hazards`](test/fixtures/hazards), with a counter that the first test resets, code that runs in another isolate, a table that is computed once, tests that are declared from the code under test, a test that leaves a timer running, a `tearDown` that throws, a `setUpAll` that fails, a test that changes the current directory, one that leaves the exit code of the process behind, a file with two test files, and tests that compare what the code under test says in their isolate with what it says in another isolate and in another process. [`test/commands/hazards_test.dart`](test/commands/hazards_test.dart) requires of all of them that every mutant has the status of a start of its own.
+With an isolate per mutant there is no round before: this mutant starts with an empty list, as in a run of its own. The package above is one of the files of [`test/fixtures/hazards`](test/fixtures/hazards), with a counter that the first test resets, code that runs in another isolate, a table that is computed once, tests that are declared from the code under test, a test that leaves a timer running, a `tearDown` that throws, a `setUpAll` that fails, a test that changes the current directory, one that leaves the exit code of the process behind, a file with two test files, tests that compare what the code under test says in their isolate with what it says in another isolate and in another process, failures outside the body of a test (while the tests are declared, in a `tearDownAll`, when the test has ended, a callback that is never called, a test that passes when it is tried again), and a mutant that ends the test runner. [`test/commands/hazards_test.dart`](test/commands/hazards_test.dart) runs all of them both ways and requires that every mutant has the id, the mutator, the replacement, the place and the status of a start of its own; it names the mutants that a shared start would kill by mistake, and holds how many mutants of each file were built in, killed in the shared start, and left for a start of their own.
 
 ## A run in several parts (`--shard` and `merge`)
 
@@ -399,7 +404,7 @@ One file with many mutants, or with slow tests, takes as long as it takes: `--jo
 
 ```
 $ dart_mutant run lib/discount.dart --shard 1/2 --report reports/parts/1.json
-  lib/discount.dart: 9 of 22 mutant(s) built in, each run by a test file of its own, with "dart test --timeout 10s --concurrency 1 --reporter json" (2 do not compile)
+  lib/discount.dart: 9 of 22 mutant(s) built in, each run by a test file of its own, with "dart test --timeout 10s --concurrency 1 --reporter expanded" (2 do not compile)
   lib/discount.dart: 8 killed with the mutants built in; 1 not killed that way get a start of their own
   lib/discount.dart: 1 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 1 at a time
   lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (12.5s)
@@ -407,7 +412,7 @@ dart_mutant run: 1 surviving mutant(s)
   - lib/discount.dart:7:30 / NumberLiteral / 0 → 1 (Survived)
 dart_mutant run: FAILED (shard 1/2: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run))
 $ dart_mutant run lib/discount.dart --shard 2/2 --report reports/parts/2.json
-  lib/discount.dart: 9 of 22 mutant(s) built in, each run by a test file of its own, with "dart test --timeout 10s --concurrency 1 --reporter json" (2 do not compile)
+  lib/discount.dart: 9 of 22 mutant(s) built in, each run by a test file of its own, with "dart test --timeout 10s --concurrency 1 --reporter expanded" (2 do not compile)
   lib/discount.dart: 8 killed with the mutants built in; 1 not killed that way get a start of their own
   lib/discount.dart: 1 of 22 mutant(s) with "dart test --fail-fast --timeout 10s test/discount_test.dart", 1 at a time
   lib/discount.dart: 11 of 22 mutants / killed 8 / survived 1 / timeout 0 / compile error 2 (2 found before the run) (12.4s)

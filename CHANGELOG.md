@@ -36,8 +36,18 @@
   package whose package configuration has neither `test` nor
   `flutter_test`), and in a package that cannot be copied.
 - The test command is also started with `--timeout 10s --concurrency 1
-  --reporter json` and the test files of the mutants, so it has to take
-  those.
+  --reporter expanded` and the test files of the mutants, so it has to
+  take those.
+- How a test went with a mutant is not read from the output of the test
+  runner: the test file of the mutant writes it down itself, in a file of
+  the tool, so nothing a test prints can be taken for the result of
+  another test. The output is read for the count of the test runner alone
+  (how many tests had failed when it started on a test file, and at the
+  end), and the two have to agree. A failure that no test file saw (a
+  `setUpAll` or `tearDownAll` that fails, an error that arrives when its
+  test has ended) sends that mutant to a start of its own; without a
+  mutant, or when the test runner ends without saying how the tests
+  ended, nothing of the shared start is used for the file.
 - The help says of `--only` that the other files of a report are kept when
   this version wrote it (as 0.1.1 does).
 
