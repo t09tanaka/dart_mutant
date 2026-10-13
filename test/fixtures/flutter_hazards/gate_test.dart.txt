@@ -1,0 +1,13 @@
+import 'package:flutter_hazards/gate.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  // Fails before any test runs.
+  setUpAll(() {
+    if (level() != 1) {
+      throw StateError('closed');
+    }
+  });
+
+  test('twice', () => expect(twice(2), 4));
+}

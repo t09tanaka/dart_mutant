@@ -1,0 +1,11 @@
+// An annotation on the library is for the test runner, which reads it in
+// the test file it starts.
+@Timeout(Duration(seconds: 20))
+library;
+
+import 'package:flutter_hazards/slow.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('half', () => expect(half(9), 4));
+}

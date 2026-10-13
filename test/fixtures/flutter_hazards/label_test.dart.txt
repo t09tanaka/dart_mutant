@@ -1,0 +1,19 @@
+import 'package:flutter_hazards/label.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  testWidgets('one parcel', (tester) async {
+    await tester.pumpWidget(const ParcelLabel(1));
+    expect(find.text('1 parcel'), findsOneWidget);
+  });
+
+  testWidgets('a few parcels', (tester) async {
+    await tester.pumpWidget(const ParcelLabel(9));
+    expect(find.text('9 parcels'), findsOneWidget);
+  });
+
+  testWidgets('many parcels', (tester) async {
+    await tester.pumpWidget(const ParcelLabel(10));
+    expect(find.text('many parcels'), findsOneWidget);
+  });
+}

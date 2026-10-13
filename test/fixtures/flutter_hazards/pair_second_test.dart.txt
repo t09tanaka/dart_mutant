@@ -1,0 +1,7 @@
+import 'package:flutter_hazards/pair.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('first call here as well', () => expect(next(), 1));
+  test('sum', () => expect(sum(1, 1), 2));
+}

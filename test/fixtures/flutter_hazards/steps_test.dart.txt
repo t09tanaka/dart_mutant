@@ -1,0 +1,9 @@
+import 'package:flutter_hazards/steps.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('steps', () {
+    expect(steps(0, 3), 3);
+    expect(steps(3, 3), 0);
+  });
+}

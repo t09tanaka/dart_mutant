@@ -1,0 +1,8 @@
+/// How many steps there are from [from] up to [to].
+int steps(int from, int to) {
+  var count = 0;
+  for (var at = from; at < to; at++) {
+    count++;
+  }
+  return count;
+}

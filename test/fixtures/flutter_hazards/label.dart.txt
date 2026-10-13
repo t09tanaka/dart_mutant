@@ -1,0 +1,15 @@
+import 'package:flutter/widgets.dart';
+
+String caption(int count) => count == 1 ? '1 parcel' : '$count parcels';
+
+class ParcelLabel extends StatelessWidget {
+  const ParcelLabel(this.count, {super.key});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => Directionality(
+    textDirection: TextDirection.ltr,
+    child: Text(count > 9 ? 'many parcels' : caption(count)),
+  );
+}

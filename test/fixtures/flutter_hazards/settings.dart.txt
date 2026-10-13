@@ -1,0 +1,3 @@
+/// What a unit costs. The tests are started with another one
+/// (test/priced/flutter_test_config.dart).
+int rate = 1;

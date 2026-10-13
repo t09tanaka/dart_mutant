@@ -1,0 +1,10 @@
+/// What the tests of this file ask outside the body of a test.
+int declared() => 1;
+
+int closing() => 2;
+
+int stray() => 3;
+
+int late() => 4;
+
+int calls() => 5;
