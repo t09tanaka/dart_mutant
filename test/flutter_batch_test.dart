@@ -777,6 +777,37 @@ void main() {
     });
   });
 
+  group('hopeless', () {
+    SuiteRun first(Outcome outcome, {bool complete = true}) => SuiteRun(
+      outcome: outcome,
+      tests: 1,
+      milliseconds: 1,
+      complete: complete,
+    );
+
+    test('not known before the report has the first wrapper, and says that '
+        'it ran to its end', () {
+      expect(hopeless(null), isNull);
+      for (final outcome in Outcome.values) {
+        expect(
+          hopeless(first(outcome, complete: false)),
+          isNull,
+          reason: '$outcome',
+        );
+      }
+    });
+
+    test('its tests passed: the start goes on', () {
+      expect(hopeless(first(Outcome.passed)), isFalse);
+    });
+
+    test('a test of it failed, or something about it is unclear (the '
+        'tests left a file): nothing of the start can be used', () {
+      expect(hopeless(first(Outcome.failed)), isTrue);
+      expect(hopeless(first(Outcome.undecided)), isTrue);
+    });
+  });
+
   test('progressOf: the events that say that the run goes on', () {
     for (final type in ['suite', 'testStart', 'testDone', 'done']) {
       expect(progressOf('{"type":"$type","time":7}'), (time: 7, type: type));

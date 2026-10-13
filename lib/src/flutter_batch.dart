@@ -498,6 +498,16 @@ bool attributable({
         ? suites.values.every((suite) => suite.outcome != Outcome.failed)
         : suites.values.any((suite) => suite.outcome != Outcome.passed));
 
+/// Whether nothing of a start can be used any more, as soon as its first
+/// wrapper has ended, which has no mutant: `null` as long as the report
+/// does not say that it ran to its end ([first] is what [suitesOf] says of
+/// it, [SuiteRun.complete] once the next wrapper has begun); then true when
+/// its tests did not pass (a test failed, or something about it is unclear,
+/// as when its tests left or changed a file in the working copy). Such a
+/// start is ended at once: the mutants after it would be run for nothing.
+bool? hopeless(SuiteRun? first) =>
+    first == null || !first.complete ? null : first.outcome != Outcome.passed;
+
 /// What a line of the standard output of the test runner tells while it
 /// runs (`--reporter json`), for how long it may go on only: `null` for a
 /// line that is no event of a wrapper beginning (`suite`), of a test
