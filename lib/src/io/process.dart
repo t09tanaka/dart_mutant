@@ -211,6 +211,15 @@ const _drainGrace = Duration(seconds: 5);
 /// child as well, and the child can end before the signal is seen here.
 const _signalGrace = Duration(milliseconds: 250);
 
+/// Whether a signal can still be on its way after a child ended with
+/// [exitCode]: only then is [_signalGrace] waited for. Every killed mutant is
+/// a failed child, so the wait is not paid for an ordinary failure where no
+/// terminal is attached ([terminal]: a Ctrl-C needs one) and the code is none
+/// of a signal's (negative, or 128 and more, as a shell reports it). A test
+/// runner that ends on a signal with 1 is only seen as such with a terminal.
+bool signalMayFollow({required int exitCode, required bool terminal}) =>
+    exitCode != 0 && (terminal || exitCode < 0 || exitCode >= 128);
+
 /// Runs [command] (program first) in [workingDirectory] without a shell, so
 /// that no argument is interpreted. On Windows a shell is used, because
 /// `flutter` and `dart` are batch files there.
@@ -336,7 +345,11 @@ Future<CommandResult> runCommand(
     Future.wait(drained).timeout(_drainGrace, onTimeout: () => const []),
     signals.received,
   ]);
-  if (ended != 0 && signals.signal == null) {
+  if (signals.signal == null &&
+      signalMayFollow(
+        exitCode: ended as int,
+        terminal: stdin.hasTerminal || stdout.hasTerminal || stderr.hasTerminal,
+      )) {
     await Future.any<Object?>([
       Future<void>.delayed(_signalGrace),
       signals.received,

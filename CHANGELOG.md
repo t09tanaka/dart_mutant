@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Two fixed waits are gone.** A failed test run (every killed mutant) no
+  longer waits 250 ms for a Ctrl-C that may follow, unless a terminal is
+  attached or the exit code is a signal's. `.dart_tool/test_gates` is no
+  longer copied into the working copies.
+
 ## 0.2.0 (2026-10-13)
 
 The tests of a file are compiled once for all its mutants, and every mutant

@@ -56,6 +56,8 @@ void main() {
       '.dart_tool/dart_mutant/work/1/pubspec.yaml',
       '.dart_tool/build/entrypoint',
       '.dart_tool/flutter_build/dart_plugin_registrant.dart',
+      '.dart_tool/test_gates',
+      '.dart_tool/test_gates/dart_mutant/pubspec.lock',
       // Of a package inside the package.
       'packages/api/.dart_tool/dart_mutant/work/1/pubspec.yaml',
     ]) {
