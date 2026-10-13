@@ -158,6 +158,32 @@ void main() {
     });
   });
 
+  test('isFlutterTest: flutter test of any form, which starts no Dart '
+      'program', () {
+    for (final command in [
+      ['flutter', 'test'],
+      ['fvm', 'flutter', 'test'],
+      ['/sdk/bin/flutter', 'test', '--platform', 'chrome'],
+      [r'C:\sdk\bin\flutter.bat', 'test', '--no-pub'],
+      ['flutter', 'test', 'test/a_test.dart'],
+    ]) {
+      expect(isFlutterTest(command), isTrue, reason: '$command');
+    }
+    for (final command in [
+      <String>[],
+      ['test'],
+      ['flutter'],
+      ['dart', 'test'],
+      ['fvm', 'dart', 'test'],
+      ['flutter', 'pub', 'test'],
+      ['test', 'flutter'],
+      ['myflutter', 'test'],
+      ['dart', 'run', 'flutter', '--', 'test'],
+    ]) {
+      expect(isFlutterTest(command), isFalse, reason: '$command');
+    }
+  });
+
   test('batchCommand: one test file at a time, every test of each, the '
       'time of a test in a start of its own, and the report in a file', () {
     expect(

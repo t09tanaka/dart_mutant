@@ -734,7 +734,8 @@ Future<int> _locked(
   // `dart test`. A package that lacks one of them (a Flutter package: its
   // tests need `flutter test`) is run one by one, as with --one-by-one.
   final testLibrary = testLibraryOf(packageConfig);
-  final dart = dartOf(command);
+  // `flutter test` ends in `test` as well, and starts no Dart program.
+  final dart = isFlutterTest(command) ? null : dartOf(command);
   // With the mutants built in, every test run is in a working copy, also
   // when they are run one at a time.
   var schemata =

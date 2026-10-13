@@ -65,15 +65,26 @@ bool _kept(String option) =>
 /// and `--dart-define`s. `null` for a command of another form (`dart test`,
 /// `flutter test --platform chrome`): each mutant gets a start of its own.
 List<String>? flutterOf(List<String> command) {
-  for (var index = 0; index + 1 < command.length; index++) {
-    final program = command[index].split(RegExp(r'[/\\]')).last;
-    if ((program == 'flutter' || program == 'flutter.bat') &&
-        command[index + 1] == 'test') {
-      return command.skip(index + 2).every(_kept) ? command : null;
+  final at = _flutterTestAt(command);
+  return at != null && command.skip(at + 2).every(_kept) ? command : null;
+}
+
+/// Where `flutter` is followed by `test` in [command], or `null`.
+int? _flutterTestAt(List<String> command) {
+  for (final (index, word) in command.indexed.skip(1)) {
+    final program = command[index - 1].split(RegExp(r'[/\\]')).last;
+    if ((program == 'flutter' || program == 'flutter.bat') && word == 'test') {
+      return index - 1;
     }
   }
   return null;
 }
+
+/// True when [command] is a `flutter test` of any form (`fvm flutter
+/// test`, `flutter test --platform chrome`): what starts the tests of a
+/// Flutter package, and no Dart program (`dartOf` would read `flutter` as
+/// one when the command ends in `test`).
+bool isFlutterTest(List<String> command) => _flutterTestAt(command) != null;
 
 /// The one start of the test runner for the wrappers [wrappers]: one test
 /// file at a time (two would share the files of the package), every test
