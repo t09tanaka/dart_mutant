@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `.dart_tool/test_gates` (the private install of this tool that
+  `test_gates` keeps) is no longer copied into the working copies.
+
 ## 0.2.0 (2026-10-13)
 
 The tests of a file are compiled once for all its mutants, and every mutant
