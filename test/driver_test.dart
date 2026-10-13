@@ -211,6 +211,28 @@ void main() {
         'has a main() that is async',
       );
     });
+
+    test('with asyncMain a main that is async is none, and the others '
+        'stay', () {
+      expect(
+        driverObstacle('Future<void> main() async {}', asyncMain: true),
+        isNull,
+      );
+      expect(driverObstacle('main() async => 1;', asyncMain: true), isNull);
+      expect(driverObstacle('void main() {}', asyncMain: true), isNull);
+      expect(
+        driverObstacle('void main(List<String> a) async {}', asyncMain: true),
+        'has a main() that takes arguments',
+      );
+      expect(
+        driverObstacle('void other() async {}', asyncMain: true),
+        'has no main()',
+      );
+      expect(
+        driverObstacle('@Skip()\nlibrary;\nmain() async {}', asyncMain: true),
+        'has an annotation on its library (@Skip())',
+      );
+    });
   });
 
   group('programAsked', () {
@@ -722,6 +744,59 @@ Future<void> main(List<String> arguments) async {
   });
 
   group('DriverLog', () {
+    test('addOutcome: a position of which the outcome is known otherwise '
+        'counts as one the drivers ran', () {
+      final log = DriverLog(plan, tests: 1)
+        ..addOutcome(Outcome.passed, tests: 3, milliseconds: 1)
+        ..addOutcome(Outcome.failed, tests: 1, milliseconds: 20)
+        ..addOutcome(Outcome.undecided, tests: 0, milliseconds: 30);
+      expect(log.next, 3);
+      expect(log.result.killed, isEmpty);
+      log.addOutcome(Outcome.passed, tests: 3, milliseconds: 4);
+      expect(log.failure, isNull);
+      expect(log.result.killed, {4: 20});
+      expect(log.result.again, [5, 6]);
+      // Another number of tests than the first time.
+      log
+        ..addOutcome(Outcome.failed, tests: 1, milliseconds: 50)
+        ..addOutcome(Outcome.passed, tests: 2, milliseconds: 6);
+      expect(log.failure, notPassingWithoutMutant);
+    });
+
+    test('addOutcome: no test at all without a mutant, one that did not '
+        'pass, and one that a limit ended', () {
+      expect(
+        (DriverLog(
+          plan,
+          tests: 1,
+        )..addOutcome(Outcome.passed, tests: 0, milliseconds: 1)).failure,
+        notPassingWithoutMutant,
+      );
+      expect(
+        (DriverLog(
+          plan,
+          tests: 1,
+        )..addOutcome(Outcome.undecided, tests: 2, milliseconds: 1)).failure,
+        notPassingWithoutMutant,
+      );
+      expect(
+        (DriverLog(plan, tests: 1)..addOutcome(
+              Outcome.passed,
+              tests: 2,
+              milliseconds: 1,
+              ended: true,
+            ))
+            .failure,
+        notEndedWithoutMutant,
+      );
+      // A mutant that a limit ended is one that is not decided.
+      final log = DriverLog(plan, tests: 1)
+        ..addOutcome(Outcome.passed, tests: 2, milliseconds: 1)
+        ..addOutcome(Outcome.undecided, tests: 0, milliseconds: 1, ended: true);
+      expect(log.failure, isNull);
+      expect(log.next, 2);
+    });
+
     test('a plan that ran: killed is what a test failed on before the '
         'tests passed without a mutant, with how long it took', () {
       final log = logOf(5, failing: {1, 4});

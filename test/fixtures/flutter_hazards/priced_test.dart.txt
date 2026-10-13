@@ -1,0 +1,11 @@
+import 'package:flutter_hazards/priced.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  // With the rate of flutter_test_config.dart.
+  test('price', () {
+    expect(price(10), 30);
+    expect(price(99), 297);
+    expect(price(100), 305);
+  });
+}

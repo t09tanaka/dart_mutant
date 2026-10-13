@@ -1,0 +1,27 @@
+import 'dart:io';
+
+/// The sum of [sizes].
+int total(List<int> sizes) {
+  var sum = 0;
+  for (final size in sizes) {
+    sum += size;
+  }
+  return sum;
+}
+
+/// How many jobs wait in the directory [path]: its files, without what is
+/// not yet unpacked (`.part`). None in a directory that is not there.
+int waiting(String path) {
+  final folder = Directory(path);
+  if (!folder.existsSync()) {
+    return 0;
+  }
+  var count = 0;
+  for (final entity in folder.listSync()) {
+    if (entity.path.endsWith('.part')) {
+      continue;
+    }
+    count++;
+  }
+  return count;
+}

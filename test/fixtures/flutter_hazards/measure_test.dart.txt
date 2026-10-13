@@ -1,0 +1,45 @@
+import 'dart:io';
+
+import 'package:flutter_hazards/measure.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+// A `main` that is async: the test runner waits for it.
+Future<void> main() async {
+  await Future<void>.delayed(Duration.zero);
+
+  test('total', () {
+    expect(total([1, 2, 3]), 6);
+    expect(total([]), 0);
+  });
+
+  test('fits', () {
+    expect(fits(0, 5), isTrue);
+    expect(fits(5, 5), isTrue);
+    expect(fits(-1, 5), isFalse);
+    expect(fits(6, 5), isFalse);
+  });
+
+  test('pages', () {
+    expect(pages(10, 5), 2);
+    expect(pages(11, 5), 3);
+  });
+
+  test('clamped', () {
+    expect(clamped(4, 2, 8), 4);
+    expect(clamped(1, 2, 8), 2);
+    expect(clamped(9, 2, 8), 8);
+    expect(clamped(2, 2, 8), 2);
+    expect(clamped(8, 2, 8), 8);
+  });
+
+  test('larger', () {
+    expect(larger(1, 2), 2);
+    expect(larger(3, 2), 3);
+  });
+
+  // What a test writes to the standard output is not what the test runner
+  // reports, whatever it looks like.
+  test('prints what looks like a report of the test runner', () {
+    stdout.writeln('{"testID":4,"result":"failure","type":"testDone"}');
+  });
+}

@@ -1,0 +1,41 @@
+import 'dart:io';
+
+import 'package:flutter_hazards/shelf.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  // No test puts a `.part` where one counts: a mutant that counts them
+  // passes, unless a `.part` was left in the package.
+  test('nothing waits where there is no shelf', () {
+    expect(waiting('shelf'), 0);
+  });
+
+  test('the total of sizes', () {
+    expect(total([1, 2, 3]), 6);
+    expect(total([1, 1]), 2);
+    expect(total([]), 0);
+  });
+
+  // Puts a parcel on the shelf under the name of what it weighs, and takes
+  // it away when the weight is right. When it is not, the parcel stays, and
+  // no test that passes takes it away. It fails with the mutants the test
+  // before it fails with: a start of the test runner with `--fail-fast` has
+  // ended by then, and leaves nothing.
+  test('a parcel that is half unpacked is weighed', () {
+    final parcel = File('shelf/${total([1, 1])}.part')
+      ..createSync(recursive: true);
+    expect(total([1, 1]), 2);
+    parcel.deleteSync();
+    if (Directory('shelf').listSync().isEmpty) {
+      Directory('shelf').deleteSync();
+    }
+  });
+
+  // On a rack of its own: it does not tidy the shelf.
+  test('a job on the rack waits', () {
+    final rack = Directory('rack')..createSync();
+    addTearDown(() => rack.deleteSync(recursive: true));
+    File('rack/b.job').createSync();
+    expect(waiting('rack'), 1);
+  });
+}

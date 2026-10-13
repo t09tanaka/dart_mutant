@@ -1,0 +1,10 @@
+import 'dart:async';
+
+import 'package:flutter_hazards/settings.dart';
+
+/// `flutter test` calls this instead of the `main` of a test file of this
+/// directory.
+Future<void> testExecutable(FutureOr<void> Function() testMain) async {
+  rate = 3;
+  await testMain();
+}

@@ -1,0 +1,22 @@
+/// The sum of [sizes].
+int total(List<int> sizes) {
+  var sum = 0;
+  for (final size in sizes) {
+    sum += size;
+  }
+  return sum;
+}
+
+/// Whether a job of [size] may be taken with the limit [limit].
+bool fits(int size, int limit) => size >= 0 && size <= limit;
+
+/// How many pages [lines] lines take with [perPage] on each.
+int pages(int lines, int perPage) => (lines + perPage - 1) ~/ perPage;
+
+/// [size] clamped [least] and [most].
+int clamped(int size, int least, int most) =>
+    size < least ? least : (size > most ? most : size);
+
+/// The larger of [a] and [b]. No test asks which one it is when they are
+/// equal.
+int larger(int a, int b) => a >= b ? a : b;

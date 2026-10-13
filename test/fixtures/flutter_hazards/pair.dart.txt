@@ -1,0 +1,9 @@
+/// What both test files of this file count in.
+var calls = 0;
+
+int next() {
+  calls++;
+  return calls;
+}
+
+int sum(int a, int b) => a + b;

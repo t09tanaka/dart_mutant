@@ -1,0 +1,49 @@
+import 'dart:async';
+
+import 'package:flutter_hazards/outside.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  // While the tests are declared.
+  if (declared() != 1) {
+    throw StateError('cannot be declared');
+  }
+
+  // When all tests have run.
+  tearDownAll(() {
+    if (closing() != 2) {
+      throw StateError('cannot be closed');
+    }
+  });
+
+  test('an error that nobody waits for', () async {
+    unawaited(
+      Future(() {
+        if (stray() != 3) {
+          throw StateError('stray');
+        }
+      }),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 25));
+  });
+
+  test('an error that arrives when its test has ended', () {
+    Timer(const Duration(milliseconds: 30), () {
+      if (late() != 4) {
+        throw StateError('late');
+      }
+    });
+  });
+
+  test('the test during which it arrives', () async {
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+  });
+
+  // Not called with a mutant: the test waits for it until its time is up.
+  test('a callback that has to be called', () {
+    final called = expectAsync0(() {});
+    if (calls() == 5) {
+      called();
+    }
+  });
+}

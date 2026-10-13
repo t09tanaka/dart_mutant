@@ -9,3 +9,8 @@ tags:
   # (test/commands/hazards_test.dart). It is part of the quick check
   # (tool/quick_check.sh), and CI runs it apart from the others.
   hazards:
+  # The one that compares the two ways of running a mutant on the Flutter
+  # package of test/fixtures/flutter_hazards
+  # (test/commands/flutter_hazards_test.dart). It needs `flutter` on the PATH,
+  # and is skipped without it. CI runs it in a job with the Flutter SDK.
+  flutter:

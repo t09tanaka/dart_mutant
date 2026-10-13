@@ -143,7 +143,11 @@ String? targetObstacle(String source) {
 /// - An annotation on the library (`@Timeout`, `@TestOn`, `@Retry`, `@Tags`,
 ///   `@Skip`) is for the test runner, which is not there.
 /// - It may not ask which program runs it ([programAsked]).
-String? driverObstacle(String test) {
+///
+/// With [asyncMain] a `main` that is `async` is no obstacle: what calls it
+/// waits for it (the test runner, for a test file that calls the `main` of
+/// another one).
+String? driverObstacle(String test, {bool asyncMain = false}) {
   final asked = programAsked(test);
   if (asked != null) {
     return 'asks which program runs it ($asked)';
@@ -164,7 +168,7 @@ String? driverObstacle(String test) {
       if (main.parameters?.parameters.isEmpty != true) {
         return 'has a main() that takes arguments';
       }
-      return main.body.isAsynchronous || main.body.isGenerator
+      return !asyncMain && (main.body.isAsynchronous || main.body.isGenerator)
           ? 'has a main() that is async'
           : null;
     }
@@ -573,8 +577,26 @@ class DriverLog {
   /// Takes what the drivers of the position [next] did, in
   /// [milliseconds].
   void add(Ran ran, {required int milliseconds}) {
-    final id = plan[_next++];
     final (:outcome, tests: count) = outcomeOf(ran, tests: tests);
+    addOutcome(
+      outcome,
+      tests: count,
+      ended: ran.ended,
+      milliseconds: milliseconds,
+    );
+  }
+
+  /// Takes what is known of the position [next] when something else than
+  /// drivers ran it: its [outcome], how many tests were run ([tests]), and
+  /// whether a limit ended it ([ended]).
+  void addOutcome(
+    Outcome outcome, {
+    required int tests,
+    required int milliseconds,
+    bool ended = false,
+  }) {
+    final id = plan[_next++];
+    final count = tests;
     if (id != noMutant) {
       if (outcome == Outcome.failed) {
         _open[id] = milliseconds;
@@ -583,7 +605,7 @@ class DriverLog {
       }
       return;
     }
-    if (ran.ended) {
+    if (ended) {
       failure = notEndedWithoutMutant;
     } else if (outcome != Outcome.passed ||
         count == 0 ||

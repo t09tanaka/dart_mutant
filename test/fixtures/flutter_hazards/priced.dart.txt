@@ -1,0 +1,4 @@
+import 'settings.dart';
+
+/// What [units] units cost, with a fee from a hundred of them.
+int price(int units) => units * rate + (units >= 100 ? 5 : 0);

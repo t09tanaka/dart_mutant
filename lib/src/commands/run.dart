@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../args.dart';
 import '../driver.dart';
+import '../flutter_batch.dart';
 import '../io/analysis.dart';
 import '../io/files.dart';
 import '../io/lock.dart';
@@ -23,6 +24,7 @@ import '../schemata.dart';
 import '../shard.dart';
 import '../syntax_mutators.dart';
 import 'built_in.dart';
+import 'flutter_batch.dart';
 
 /// Where a run keeps what must survive it, below the package. `.dart_tool`
 /// is ignored by git in every Dart project.
@@ -324,6 +326,12 @@ class _Copies {
       _made.add(copy);
     }
     return _made.sublist(0, count);
+  }
+
+  /// Makes [copy] again, from the package as it is now.
+  void refresh(String copy) {
+    removeDirectory(copy);
+    copyPackage(root, copy);
   }
 
   void remove() => removeDirectory(dir);
@@ -726,7 +734,8 @@ Future<int> _locked(
   // `dart test`. A package that lacks one of them (a Flutter package: its
   // tests need `flutter test`) is run one by one, as with --one-by-one.
   final testLibrary = testLibraryOf(packageConfig);
-  final dart = dartOf(command);
+  // `flutter test` ends in `test` as well, and starts no Dart program.
+  final dart = isFlutterTest(command) ? null : dartOf(command);
   // With the mutants built in, every test run is in a working copy, also
   // when they are run one at a time.
   var schemata =
@@ -749,7 +758,17 @@ Future<int> _locked(
       schemata = false;
     }
   }
-  if (jobs > 1 || schemata) {
+  // The mutants of a Flutter package are built in as well, and run by one
+  // start of `flutter test` for many of them: a test file per mutant, each
+  // in the process the test runner gives every test file.
+  final flutterTestLibrary = flutterTestLibraryOf(packageConfig);
+  final flutterCommand = flutterOf(command);
+  var batch =
+      (args.schemata ?? schemataByDefault) &&
+      !schemata &&
+      flutterTestLibrary != null &&
+      flutterCommand != null;
+  if (jobs > 1 || schemata || batch) {
     final obstacle = copyObstacle(
       root: root,
       resolvedRoot: Directory(root).resolveSymbolicLinksSync(),
@@ -760,13 +779,14 @@ Future<int> _locked(
       io.err(
         '$executable run: $obstacle, so it cannot be run from working copies. '
         'The mutants are run one at a time, in place (--jobs 1)'
-        '${schemata ? ', each with a start of the test runner of its own' : ''}',
+        '${schemata || batch ? ', each with a start of the test runner of its own' : ''}',
       );
       jobs = 1;
       schemata = false;
+      batch = false;
     }
   }
-  final copies = jobs > 1 || schemata
+  final copies = jobs > 1 || schemata || batch
       ? _Copies(Directory(root).resolveSymbolicLinksSync(), state.work, jobs)
       : null;
   // True once a file of the package was written by this run.
@@ -784,6 +804,10 @@ Future<int> _locked(
     _writeIncremental(state, carried);
   }
   final kept = <String, Object?>{};
+  // From how many mutants those of a file are built in.
+  final from = batch && buildInFrom > mutantsToBatch
+      ? mutantsToBatch
+      : buildInFrom;
 
   final runs = <String, FileRun>{};
   final failures = <String, String>{};
@@ -855,7 +879,7 @@ Future<int> _locked(
         source: source,
         tests: testTexts,
         command: command,
-        sharedStart: schemata,
+        sharedStart: schemata || batch,
       );
       final watch = Stopwatch()..start();
       final List<Mutant> mutants;
@@ -907,17 +931,22 @@ Future<int> _locked(
             for (final (index, reason) in reasons.indexed)
               if (reason == null && (shard == null || shard.has(index))) index,
           ];
-          if (schemata &&
+          if ((schemata || batch) &&
               compiling.isNotEmpty &&
               reasons.length == mutants.length) {
-            if (!paysToBuildIn(compiling.length, from: buildInFrom)) {
+            if (!paysToBuildIn(compiling.length, from: from)) {
               // Before they are built in: that is part of what is saved.
               few = compiling.length;
             } else {
               notBuilt =
                   fileObstacle(source) ??
                   targetObstacle(source) ??
-                  testsObstacle(testTexts);
+                  (batch
+                      ? wrapperObstacle(
+                          testTexts,
+                          exists: (path) => existsExact(root, path),
+                        )
+                      : testsObstacle(testTexts));
               if (notBuilt == null) {
                 try {
                   built = await buildIn(
@@ -983,7 +1012,7 @@ Future<int> _locked(
         }
         if (instead == null && few != null) {
           io.out(
-            '  $path: $few mutant(s) to run, fewer than $buildInFrom: not '
+            '  $path: $few mutant(s) to run, fewer than $from: not '
             'built in, a start of the test runner for each',
           );
         }
@@ -1003,10 +1032,9 @@ Future<int> _locked(
           // In every working copy the tests are compiled and run without
           // a mutant before the first mutant and after the last: more
           // copies only pay when each has enough to do.
-          final drivers = driversFor(
-            mutants: built.ids.length,
-            jobs: copies.jobs,
-          );
+          final drivers = batch
+              ? startsFor(mutants: built.ids.length, jobs: copies.jobs)
+              : driversFor(mutants: built.ids.length, jobs: copies.jobs);
           List<String>? used;
           try {
             used = copies.first(drivers);
@@ -1016,35 +1044,63 @@ Future<int> _locked(
           if (used != null) {
             io.out(
               '  $path: ${built.ids.length} of ${mutants.length} mutant(s) '
-              'built in, each run by a process of its own, with '
-              '"${dart!.join(' ')} <the tests, compiled once> <mutant>"'
+              'built in, each run by '
+              '${batch ? 'a test file of its own, in one start of '
+                        '"${flutterCommand!.join(' ')} --concurrency=1 '
+                        '<a test file per mutant>"' : 'a process of its own, with '
+                        '"${dart!.join(' ')} <the tests, compiled once> '
+                        '<mutant>"'}'
               '${drivers == 1 ? '' : ', $drivers at a time'}'
               '${said ? '' : ' ($refused do not compile)'}',
             );
             said = true;
             announced = true;
-            final outcome = await runBuiltIn(
-              copies: used,
-              root: root,
-              path: path,
-              original: original,
-              content: built.content,
-              guardAt: built.guardAt,
-              ids: built.ids,
-              tests: target.tests,
-              dart: dart,
-              testLibrary: testLibrary!,
-              package: packageNameOf(pubspec),
-              // Whichever is shorter: a mutant that is ended there gets a
-              // start of the test runner of its own anyway.
-              limitOf: (baseline) {
-                final usual = limitOf(baseline);
-                final short = driverLimit(baseline);
-                return short < usual ? short : usual;
-              },
-              memoryLimitOf: memoryLimitOf,
-              signals: signals,
-            );
+            // Whichever is shorter: a mutant that is ended there gets a
+            // start of the test runner of its own anyway.
+            Duration shorter(Duration baseline) {
+              final usual = limitOf(baseline);
+              final short = driverLimit(baseline);
+              return short < usual ? short : usual;
+            }
+
+            final outcome = batch
+                ? await runFlutterBatch(
+                    copies: used,
+                    root: root,
+                    path: path,
+                    original: original,
+                    content: built.content,
+                    guardAt: built.guardAt,
+                    ids: built.ids,
+                    test: target.tests.single,
+                    command: flutterCommand!,
+                    testLibrary: flutterTestLibrary!,
+                    package: packageNameOf(pubspec),
+                    config: testConfigOf(
+                      target.tests.single,
+                      exists: (path) => existsExact(root, path),
+                    ).config,
+                    limitOf: shorter,
+                    memoryLimitOf: memoryLimitOf,
+                    signals: signals,
+                    refresh: copies.refresh,
+                  )
+                : await runBuiltIn(
+                    copies: used,
+                    root: root,
+                    path: path,
+                    original: original,
+                    content: built.content,
+                    guardAt: built.guardAt,
+                    ids: built.ids,
+                    tests: target.tests,
+                    dart: dart!,
+                    testLibrary: testLibrary!,
+                    package: packageNameOf(pubspec),
+                    limitOf: shorter,
+                    memoryLimitOf: memoryLimitOf,
+                    signals: signals,
+                  );
             if (outcome.aborted != null) {
               aborted = outcome.aborted;
             }
@@ -1075,7 +1131,10 @@ Future<int> _locked(
                 '${outcome.unended == 0 ? '' : '; ${outcome.unended} of '
                           'them did not end, and were ended'}'
                 '${outcome.heavy == 0 ? '' : '; ${outcome.heavy} of them '
-                          'used too much memory, and were ended'}',
+                          'used too much memory, and were ended'}'
+                '${outcome.dirty == 0 ? '' : '; ${outcome.dirty} of them '
+                          'were not run for a file the tests before them '
+                          'left or changed in the working copy'}',
               );
             }
             var left = [

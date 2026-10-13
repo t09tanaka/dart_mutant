@@ -1,0 +1,1 @@
+String diag(String file, int line) => '$file:$line:${line + 1}: Error: bad';

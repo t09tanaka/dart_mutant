@@ -76,6 +76,11 @@
       "impact": "A mutant is reported as killed although the tests no longer pass without a mutant, a mutant that never ends holds the whole run, or the failure of one mutant is counted for another"
     },
     {
+      "path": "lib/src/flutter_batch.dart",
+      "decides": "Which test command can run the test files of many mutants of a Flutter package in one start, the test file of a mutant and what it compares before it runs its tests, which test files cannot be called that way, what the report of the test runner says of each of them, and whether a start ended the way its report says",
+      "impact": "A mutant is reported as killed on a test that failed for what the tests of another mutant left, on an error of the test runner, or on a report that belongs to another test file"
+    },
+    {
       "path": "lib/src/memory.dart",
       "decides": "Which processes belong to a test run and how much memory they hold together, how much a test run may hold after a run without a mutant, and what the report says of a run that was ended for it",
       "impact": "A test run that takes memory without end is not ended before the machine has none left, a run is ended for the memory of processes that are not its own, or a limit below what the tests need turns mutants they would not have noticed into timeouts"

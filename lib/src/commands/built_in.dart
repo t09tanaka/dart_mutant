@@ -167,6 +167,7 @@ class BuiltInRun {
     this.aborted,
     this.unended = 0,
     this.heavy = 0,
+    this.dirty = 0,
   });
 
   /// The mutants that are `Killed`, with the milliseconds of their tests.
@@ -184,6 +185,10 @@ class BuiltInRun {
 
   /// How many mutants held more memory than their limit.
   final int heavy;
+
+  /// How many mutants were not run for what the tests of the mutants before
+  /// them had left in the working copy (those of a Flutter package).
+  final int dirty;
 }
 
 String _inPackage(String root, String relativePath) =>
