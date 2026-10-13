@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 (2026-10-13)
 
 - **The mutants of a Flutter package are built in as well, and run by one
   start of `flutter test` for many of them.** `flutter test` gives every
