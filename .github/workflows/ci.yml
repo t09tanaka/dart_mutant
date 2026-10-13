@@ -63,10 +63,28 @@ jobs:
       # As many test runs at a time as the runner has processors.
       - run: HAZARDS_JOBS="$(nproc)" dart test --tags hazards
 
+  # The same for a Flutter package (the tag `flutter`,
+  # test/commands/flutter_hazards_test.dart): the only test that needs the
+  # Flutter SDK, whose `dart` runs it. Without `flutter` on the PATH that test
+  # is skipped, so it is left out of the jobs below.
+  flutter:
+    name: Flutter hazards
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: dart pub get
+      - run: flutter --version
+      - run: HAZARDS_JOBS="$(nproc)" dart test --tags flutter
+
   # The other tests that start processes (the tag `process` without
-  # `hazards`): most of the time of `dart test`, so they are divided into
-  # parts that run beside each other. The test runner divides them, so a new
-  # test file is in one of the parts without being named here.
+  # `hazards` and `flutter`): most of the time of `dart test`, so they are
+  # divided into parts that run beside each other. The test runner divides
+  # them, so a new test file is in one of the parts without being named here.
   processes:
     name: Processes ${{ matrix.part }}/3, Dart ${{ matrix.sdk }}
     runs-on: ubuntu-latest
@@ -83,5 +101,5 @@ jobs:
           sdk: ${{ matrix.sdk }}
       - run: dart pub get
       - run: >-
-          dart test --tags process --exclude-tags hazards
+          dart test --tags process --exclude-tags "hazards || flutter"
           --total-shards 3 --shard-index $((${{ matrix.part }} - 1))

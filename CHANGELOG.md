@@ -1,5 +1,73 @@
 # Changelog
 
+## Unreleased
+
+- **The mutants of a Flutter package are built in as well, and run by one
+  start of `flutter test` for many of them.** `flutter test` gives every
+  test file a process of its own. So every mutant of a file gets a test
+  file of its own, which puts the mutant to work and calls the `main` of
+  the test file, and one start of the test runner in a working copy runs
+  these files one after the other (`flutter test --no-pub --concurrency=1
+  …`), with the tests without a mutant first, after every 25 mutants and
+  last. A test file of a mutant takes about half a second there, where a
+  start of `flutter test` takes one and a half to three. `--one-by-one`
+  runs a start per mutant, as before, and is what the statuses are held
+  to.
+- **Only `Killed` is taken from that start**, from the report the test
+  runner writes to a file (`--file-reporter json`; nothing a test prints
+  gets into it): a test of the test file of the mutant failed, and the
+  tests without a mutant passed after it. A mutant whose tests passed,
+  whose test file could not be loaded, of which a `setUpAll` or a
+  `tearDownAll` failed, of which a test ran out of time or failed when it
+  had ended, or whose tests print the form of a compiler error gets a
+  start of `flutter test` of its own. So does every mutant of a start that
+  ended otherwise than its report says. `Survived`, `Timeout` and
+  `CompileError` are always the verdict of a start of its own.
+- **Known difference: that start has no `--fail-fast`.** A start per
+  mutant ends with the first test that fails. The one start for many
+  mutants cannot (it would end for all of them), so a test file of which a
+  test failed is run to its end. The mutant is killed by its first failing
+  test either way; but a later test of it that fails as well can leave a
+  file in the working copy that a start with `--fail-fast` never leaves,
+  and a mutant after it that only fails on that file would be killed by
+  mistake. Against that: the test file of a mutant does not run its tests
+  when the working copy is not what the first test file found (the names
+  of the directories, and the names, sizes and times of the files), and
+  the mutant gets a start of its own; tests that leave or change a file
+  when they pass give the file up; and a working copy in which something
+  was left is made again before the starts of the mutants that are left.
+  What is outside the package (the temporary directory of the system) is
+  not compared, as it is not between two starts of the test runner.
+- A start that goes on for too long without a test starting or ending (a
+  mutant that never gives anything else a turn), or holds too much memory,
+  is ended: the mutant it was at gets a start of its own, and the mutants
+  after it are started again.
+- A test of this package requires that every mutant of a Flutter package of
+  tests that are easy to get wrong has the status of `--one-by-one`
+  (`test/fixtures/flutter_hazards`,
+  `test/commands/flutter_hazards_test.dart`, 124 mutants in 11 files),
+  among them a file whose tests leave a file behind in just that way. It
+  needs `flutter` on the PATH, is skipped without it, and has a job of its
+  own in CI.
+- Not run that way, each with a start per mutant and a line that says why:
+  a file with fewer than 8 mutants to run; a test command that is not
+  `flutter test` (after any prefix) followed by nothing but `--no-pub`,
+  `--pub` and `--dart-define`s; a file with more than one test file; a
+  test file with an annotation on its library, without a `main()` or with
+  a `main` that takes arguments; a test file with a
+  `flutter_test_config.dart` below the top of the package and another at
+  the top. A `main` that is `async` and one `flutter_test_config.dart` are
+  kept.
+- On that fixture, with Flutter 3.47 on a busy Mac: three files with
+  ordinary tests (51 mutants) took 39 s instead of 79 s with `--jobs 1`,
+  and 30 s instead of 39 s with `--jobs 3`. **The whole fixture was
+  slower**: 208 s instead of 158 s with `--jobs 4`. Most of its files are
+  there for what cannot be taken from the one start, and a mutant that is
+  left costs its test file there and then a start of its own. What is
+  gained depends on the tests: most on a file with many mutants that a
+  test kills, nothing on one whose mutants mostly survive or cannot be
+  judged in the one start.
+
 ## 0.2.0 (2026-10-13)
 
 The tests of a file are compiled once for all its mutants, and every mutant

@@ -170,12 +170,12 @@ Future<BuiltInRun> runFlutterBatch({
         // and how much it may hold: from the first wrapper, which has no
         // mutant, once the second one begins.
         final stop = Completer<void>();
-        Duration? limit;
+        final quiet = Quiet(limitOf);
         int? memoryLimit;
-        Timer? quiet;
+        Timer? waiting;
         void wait() {
-          quiet?.cancel();
-          quiet = Timer(limit ?? baselineLimit, () {
+          waiting?.cancel();
+          waiting = Timer(quiet.limit ?? baselineLimit, () {
             if (!stop.isCompleted) {
               stop.complete();
             }
@@ -183,8 +183,6 @@ Future<BuiltInRun> runFlutterBatch({
         }
 
         final memory = MemoryWatch(limit: () => memoryLimit);
-        var suites = 0;
-        int? loaded;
         wait();
         final result = await runCommand(
           batchCommand(
@@ -205,25 +203,13 @@ Future<BuiltInRun> runFlutterBatch({
             if (progress == null) {
               return;
             }
-            if (progress.suite) {
-              suites++;
-            } else if (suites == 1) {
-              // The first event after the wrapper was loaded.
-              loaded ??= progress.time;
-            }
-            if (progress.suite && suites == 2 && limit == null) {
-              // What the tests took, and what loading the first wrapper
-              // took, which is more than loading a later one takes.
-              final load = loaded ?? progress.time;
-              limit =
-                  limitOf(Duration(milliseconds: progress.time - load)) +
-                  Duration(milliseconds: load);
+            if (quiet.add(progress)) {
               memoryLimit = memoryLimitOf(memory.peak);
             }
             wait();
           },
         );
-        quiet?.cancel();
+        waiting?.cancel();
         if (result.signal != null || signals.signal != null) {
           return;
         }

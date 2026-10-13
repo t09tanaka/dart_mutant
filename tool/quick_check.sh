@@ -11,6 +11,10 @@
 #    the status with the default that `--one-by-one` gives it
 #    (the tag `hazards`). `HAZARDS_JOBS` is the `--jobs` of both runs: 6
 #    here, 2 without this script.
+#
+# Not part of it: the same for a Flutter package (the tag `flutter`), which
+# needs `flutter` on the PATH and takes several minutes more. CI runs it;
+# here it is `dart test --tags flutter`.
 set -eu
 cd "$(dirname "$0")/.."
 

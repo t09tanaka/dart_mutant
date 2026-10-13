@@ -352,7 +352,9 @@ Options:
                    mutant is then run by a process of its own, without a
                    start of the test runner. Only "killed" is taken from
                    that; every other mutant gets a start of the test runner
-                   of its own as well. Not for a Flutter package.
+                   of its own as well. In a Flutter package each mutant
+                   gets a test file of its own instead, and one start of
+                   "flutter test" runs these files one after the other.
   --no-schemata    The same as --one-by-one: its name in 0.1.
   --schemata       Withdrawn in 0.1.1, and refused (exit code 2). In 0.1.0
                    it could report a mutant as killed that survives a run

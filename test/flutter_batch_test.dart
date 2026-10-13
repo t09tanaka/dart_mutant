@@ -348,6 +348,10 @@ void main() {
       expect(text, contains("import 'package:fixture/a.dart' as target;"));
       expect(text, contains("import '../../test/a_test.dart' as tests;"));
       expect(text, isNot(contains('as config')));
+      expect(
+        text,
+        contains("import '../../test/a_test.dart' as tests;\n\nconst _root = "),
+      );
       expect(text, contains(r"const _root = '/work/it\'s/1';"));
       expect(
         text,
@@ -385,6 +389,7 @@ void main() {
       expect(none, contains(r'target.$dartMutantActive = -1;'));
       expect(none, isNot(contains(refuses)));
       expect(none, isNot(contains(leftBefore)));
+      expect(none, contains('      _first = true;\n    }\n  });'));
       // The first one says so when its own tests left something.
       for (final text in [source(), none]) {
         expect(text, contains('_first = true;'));
@@ -476,7 +481,11 @@ void main() {
     });
 
     test('a setUpAll or a tearDownAll that fails, whatever the tests did', () {
-      for (final hook in ['(setUpAll)', 'a group (tearDownAll)']) {
+      for (final hook in [
+        '(setUpAll)',
+        'a group (setUpAll)',
+        'a group (tearDownAll)',
+      ]) {
         for (final result in ['failure', 'success']) {
           final report = Report();
           final id = report.suite(0);
@@ -525,6 +534,18 @@ void main() {
         ..error(first, 'late')
         ..end(success: false);
       expect(suitesOf(report.text).suites[0]!.outcome, Outcome.undecided);
+    });
+
+    test('what a test prints when it has ended is no error', () {
+      final report = Report();
+      final id = report.suite(0);
+      final first = report.start(id, 'first');
+      report
+        ..done(first, 'success')
+        ..print(first, 'still here')
+        ..test(id, 'second', result: 'failure')
+        ..end(success: false);
+      expect(suitesOf(report.text).suites[0]!.outcome, Outcome.failed);
     });
 
     test('a test that ran out of time', () {
@@ -628,6 +649,11 @@ void main() {
       milliseconds: 1,
     );
 
+    test('a suite is complete and clean unless it is told otherwise', () {
+      expect(passed.complete, isTrue);
+      expect(passed.dirty, isFalse);
+    });
+
     test('the exit code, the report and the wrappers agree', () {
       expect(
         attributable(
@@ -725,17 +751,17 @@ void main() {
     });
   });
 
-  test('progressOf: the events that say that the run goes on, and where a '
-      'wrapper begins', () {
-    expect(progressOf('{"type":"suite","time":12}'), (time: 12, suite: true));
-    for (final type in ['testStart', 'testDone', 'done']) {
-      expect(progressOf('{"type":"$type","time":7}'), (time: 7, suite: false));
+  test('progressOf: the events that say that the run goes on', () {
+    for (final type in ['suite', 'testStart', 'testDone', 'done']) {
+      expect(progressOf('{"type":"$type","time":7}'), (time: 7, type: type));
     }
     for (final line in [
       '',
       'Some tests failed.',
       '{"type":"print","time":7}',
       '{"type":"error","time":7}',
+      '{"type":7,"time":7}',
+      '{"time":7}',
       '{"type":"suite"}',
       '{"type":"suite","time":"7"}',
       '{"type":"suite","time":7',
@@ -744,5 +770,58 @@ void main() {
     ]) {
       expect(progressOf(line), isNull, reason: line);
     }
+  });
+
+  group('Quiet', () {
+    Duration limitOf(Duration tests) => tests * 3 + const Duration(seconds: 5);
+
+    test('no limit until the second wrapper begins; then from what the '
+        'tests of the first took, and what loading it took', () {
+      final quiet = Quiet(limitOf);
+      expect(quiet.limit, isNull);
+      for (final (time, type) in [
+        (0, 'suite'),
+        (1, 'testStart'),
+        // Loaded after 4 seconds.
+        (4000, 'testDone'),
+        (4010, 'testStart'),
+        (4200, 'testDone'),
+        (4210, 'testStart'),
+        (4500, 'testDone'),
+      ]) {
+        expect(quiet.add((time: time, type: type)), isFalse, reason: '$time');
+        expect(quiet.limit, isNull);
+      }
+      // The tests took 600 ms.
+      expect(quiet.add((time: 4600, type: 'suite')), isTrue);
+      expect(quiet.limit, const Duration(milliseconds: 1800 + 5000 + 4000));
+      // And it stays.
+      for (final (time, type) in [
+        (4700, 'testStart'),
+        (9000, 'testDone'),
+        (9100, 'suite'),
+        (9900, 'done'),
+      ]) {
+        expect(quiet.add((time: time, type: type)), isFalse);
+      }
+      expect(quiet.limit, const Duration(milliseconds: 10800));
+    });
+
+    test('a first wrapper of which no test ended: all of it counts as '
+        'tests', () {
+      final quiet = Quiet(limitOf)
+        ..add((time: 100, type: 'suite'))
+        ..add((time: 110, type: 'testStart'));
+      expect(quiet.add((time: 2100, type: 'suite')), isTrue);
+      expect(quiet.limit, const Duration(milliseconds: 5000 + 2100));
+    });
+
+    test('the run is done after one wrapper: no limit', () {
+      final quiet = Quiet(limitOf)
+        ..add((time: 0, type: 'suite'))
+        ..add((time: 10, type: 'testDone'))
+        ..add((time: 20, type: 'done'));
+      expect(quiet.limit, isNull);
+    });
   });
 }

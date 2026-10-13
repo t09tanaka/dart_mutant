@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'driver.dart';
 import 'json.dart';
@@ -21,10 +22,8 @@ const mutantsPerStart = 10;
 /// In how many working copies the [mutants] that are built into a file of
 /// a Flutter package are run, with [jobs] of them at hand: one for every
 /// [mutantsPerStart] mutants, and no more than there are.
-int startsFor({required int mutants, required int jobs}) {
-  final wanted = (mutants / mutantsPerStart).ceil();
-  return wanted < jobs ? wanted : jobs;
-}
+int startsFor({required int mutants, required int jobs}) =>
+    min(jobs, (mutants / mutantsPerStart).ceil());
 
 /// Where the wrappers of a file are written, with the report of the test
 /// runner and what the wrappers write down: a directory of the tool in the
@@ -146,21 +145,16 @@ const testConfigName = 'flutter_test_config.dart';
   String test, {
   required bool Function(String path) exists,
 }) {
-  var directory = directoryOf(test);
-  String? nearest;
-  for (;;) {
-    final candidate = directory.isEmpty
-        ? testConfigName
-        : '$directory/$testConfigName';
-    if (exists(candidate)) {
-      nearest ??= candidate;
-    }
-    if (directory.isEmpty) {
-      break;
-    }
-    directory = directoryOf(directory);
-  }
-  if (nearest == null || nearest == testConfigName) {
+  // The directories of the test file below the top of the package, the
+  // nearest first. A list of a length, not a loop that goes up: a mutant of
+  // such a loop does not end.
+  final directories = test.split('/')..removeLast();
+  final nearest = [
+    for (final (index, _) in directories.indexed)
+      '${directories.take(directories.length - index).join('/')}/'
+          '$testConfigName',
+  ].where(exists).firstOrNull;
+  if (nearest == null) {
     return (config: null, obstacle: null);
   }
   return exists(testConfigName)
@@ -191,17 +185,14 @@ String? wrapperObstacle(
     return 'has more than one test file, which a start of the test runner '
         'runs at the same time';
   }
-  for (final MapEntry(key: path, value: source) in tests.entries) {
-    final obstacle = driverObstacle(source, asyncMain: true);
-    if (obstacle != null) {
-      return 'has a test ($path) that $obstacle';
-    }
-    final config = testConfigOf(path, exists: exists);
-    if (config.obstacle != null) {
-      return config.obstacle;
-    }
+  if (tests.isEmpty) {
+    return null;
   }
-  return null;
+  final MapEntry(key: path, value: source) = tests.entries.single;
+  final obstacle = driverObstacle(source, asyncMain: true);
+  return obstacle != null
+      ? 'has a test ($path) that $obstacle'
+      : testConfigOf(path, exists: exists).obstacle;
 }
 
 /// The test file of the mutant [id] ([noMutant] for none) of [target] (as
@@ -416,7 +407,7 @@ bool _isHook(String name) =>
           ended[at] = time;
           texts.putIfAbsent(at, StringBuffer.new)
             ..writeln(event['error'] ?? event['message'])
-            ..writeln(event['stackTrace'] ?? '');
+            ..writeln(event['stackTrace']);
           if (event['type'] == 'error') {
             final error = '${event['error']}';
             if (results.containsKey(event['testID']) ||
@@ -456,8 +447,9 @@ bool _isHook(String name) =>
         others.every((id) => results[id] == 'success') &&
         own.isNotEmpty &&
         classifyRun(
-              exitCode: 1,
-              output: '${texts[at] ?? ''}',
+              // Of a start that failed, whatever its exit code.
+              exitCode: null,
+              output: '${texts[at]}',
               timedOut: false,
             ) !=
             compileError;
@@ -497,10 +489,11 @@ bool attributable({
 
 /// What a line of the standard output of the test runner tells while it
 /// runs (`--reporter json`), for how long it may go on only: `null` for a
-/// line that is no event, else the time of the event (milliseconds since
-/// the start) and whether a wrapper begins with it. Nothing else is read
+/// line that is no event of a wrapper beginning (`suite`), of a test
+/// starting or ending, or of the run being done; else the time of the event
+/// (milliseconds since the start) and which it is. Nothing else is read
 /// there: what is known of a mutant is read from the report in the file.
-({int time, bool suite})? progressOf(String line) {
+({int time, String type})? progressOf(String line) {
   if (!line.startsWith('{')) {
     return null;
   }
@@ -514,7 +507,43 @@ bool attributable({
   final time = event?['time'];
   final type = event?['type'];
   return time is int &&
+          type is String &&
           const {'suite', 'testStart', 'testDone', 'done'}.contains(type)
-      ? (time: time, suite: type == 'suite')
+      ? (time: time, type: type)
       : null;
+}
+
+/// How long a start may go on without a test starting or ending, and from
+/// when: fed with what [progressOf] says of every line, it is `null` until
+/// the second wrapper begins, and then [limitOf] of what the tests of the
+/// first one took (it has no mutant), plus what loading the first one took,
+/// which is more than loading a later one takes.
+class Quiet {
+  Quiet(this.limitOf);
+
+  final Duration Function(Duration tests) limitOf;
+
+  var _suites = 0;
+  int? _loaded;
+
+  /// See [Quiet].
+  Duration? limit;
+
+  /// Takes the next event. Returns true when [limit] is known from now on.
+  bool add(({int time, String type}) event) {
+    if (event.type == 'suite') {
+      _suites++;
+      if (_suites == 2) {
+        final loaded = _loaded ?? event.time;
+        limit =
+            limitOf(Duration(milliseconds: event.time - loaded)) +
+            Duration(milliseconds: loaded);
+        return true;
+      }
+    } else if (event.type == 'testDone') {
+      // The first test of a wrapper is the loading of its file.
+      _loaded ??= event.time;
+    }
+    return false;
+  }
 }
