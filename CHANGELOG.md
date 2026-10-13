@@ -67,6 +67,8 @@
   gained depends on the tests: most on a file with many mutants that a
   test kills, nothing on one whose mutants mostly survive or cannot be
   judged in the one start.
+- `.dart_tool/test_gates` (the private install of this tool that
+  `test_gates` keeps) is no longer copied into the working copies.
 
 ## 0.2.0 (2026-10-13)
 

@@ -49,10 +49,16 @@ const platformDirectories = {
 
 /// The same, directly below a `.dart_tool` (of the package, or of a package
 /// inside it): the state of this tool (the working copies are in it), and
-/// the caches of the build tools. What the test runners need
+/// the caches of the build tools, and the private install of this tool that
+/// `test_gates` keeps (`test_gates`). What the test runners need
 /// (`package_config.json`, `version`, the snapshot of the test runner, the
 /// native assets) is copied.
-const skippedInDartTool = {'dart_mutant', 'build', 'flutter_build'};
+const skippedInDartTool = {
+  'dart_mutant',
+  'build',
+  'flutter_build',
+  'test_gates',
+};
 
 /// True when [path] (relative to the package, with `/`), or a directory above
 /// it, is left out of a working copy.
