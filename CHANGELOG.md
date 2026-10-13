@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (2026-10-12)
+## 0.2.0 (2026-10-13)
 
 The tests of a file are compiled once for all its mutants, and every mutant
 is run by a process of its own. The statuses are those of 0.1.1, which
