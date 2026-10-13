@@ -42,6 +42,15 @@
   mutant that never gives anything else a turn), or holds too much memory,
   is ended: the mutant it was at gets a start of its own, and the mutants
   after it are started again.
+- **A file of which nothing of that start can be used is given up as soon
+  as that is known**, and not when the start has run all its test files:
+  when code of the file ran in another isolate or process than the tests
+  (looked for whenever a test starts or ends), and when the first test
+  file, which has no mutant, has ended and its tests did not pass or left
+  or changed a file in the package (read from the report the test runner
+  writes while it runs). The starts of the file in all the working copies
+  are ended at once, and each of its mutants gets a start of its own, as
+  before. No status comes from it either way.
 - A test of this package requires that every mutant of a Flutter package of
   tests that are easy to get wrong has the status of `--one-by-one`
   (`test/fixtures/flutter_hazards`,
@@ -61,9 +70,12 @@
 - On that fixture, with Flutter 3.47 on a busy Mac: three files with
   ordinary tests (51 mutants) took 39 s instead of 79 s with `--jobs 1`,
   and 30 s instead of 39 s with `--jobs 3`. **The whole fixture was
-  slower**: 208 s instead of 158 s with `--jobs 4`. Most of its files are
+  slower**: 191 s instead of 155 s with `--jobs 4`. Most of its files are
   there for what cannot be taken from the one start, and a mutant that is
-  left costs its test file there and then a start of its own. What is
+  left costs its test file there and then a start of its own. The file
+  that is given up (`background`, 25 mutants) took 13.5 s instead of
+  11.8 s there; 17.7 s when it was given up only after its start had run
+  all its test files. What is
   gained depends on the tests: most on a file with many mutants that a
   test kills, nothing on one whose mutants mostly survive or cannot be
   judged in the one start.

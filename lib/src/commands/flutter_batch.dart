@@ -68,7 +68,10 @@ Set<String> _treeOf(String root, {required String without}) {
 ///
 /// Only `Killed` is taken from it, and only what the report of the test
 /// runner says ([suitesOf]), when the tests without a mutant passed before
-/// and after ([DriverLog]). A start that goes on for too long without a
+/// and after ([DriverLog]). When nothing of the wrappers can be used (code
+/// of the file ran elsewhere, or the first wrapper, which has no mutant,
+/// did not pass: [hopeless]), the starts of all the copies are ended as
+/// soon as that is known. A start that goes on for too long without a
 /// test starting or ending, or holds too much memory, is ended: what its
 /// report says of the wrappers before the one it was at is used, the mutant
 /// it was at gets a start of its own, and the wrappers after it are
@@ -101,6 +104,16 @@ Future<BuiltInRun> runFlutterBatch({
   var unended = 0;
   var heavy = 0;
   var dirty = 0;
+
+  // Nothing of the wrappers of the file is used: the starts of all the
+  // working copies are ended at once.
+  final givenUp = Completer<void>();
+  void giveUp(String why) {
+    failure ??= why;
+    if (!givenUp.isCompleted) {
+      givenUp.complete();
+    }
+  }
 
   Future<void> worker(String copy, List<int> share) async {
     final state = Directory(_inPackage(copy, wrapperDirectory));
@@ -183,6 +196,9 @@ Future<BuiltInRun> runFlutterBatch({
         }
 
         final memory = MemoryWatch(limit: () => memoryLimit);
+        // Whether the first wrapper, which has no mutant, has been looked
+        // at in the report.
+        var looked = false;
         wait();
         final result = await runCommand(
           batchCommand(
@@ -196,7 +212,7 @@ Future<BuiltInRun> runFlutterBatch({
           workingDirectory: copy,
           capture: true,
           signals: signals,
-          stop: stop.future,
+          stop: Future.any([stop.future, givenUp.future]),
           memory: memory,
           onLine: (line) {
             final progress = progressOf(line);
@@ -207,6 +223,24 @@ Future<BuiltInRun> runFlutterBatch({
               memoryLimit = memoryLimitOf(memory.peak);
             }
             wait();
+            // What is known when the run is over is known as soon as the
+            // first wrapper has ended, and often earlier: the mutants
+            // after it are not run for nothing.
+            if (elsewhere.existsSync()) {
+              giveUp(ranElsewhere);
+            } else if (quiet.limit != null && !looked) {
+              // The second wrapper has begun. The report in the file can
+              // be a line behind the output: then the next event looks.
+              final first = hopeless(
+                suitesOf(
+                  report.existsSync() ? report.readAsStringSync() : '',
+                ).suites[0],
+              );
+              looked = first != null;
+              if (first ?? false) {
+                giveUp(notPassingInWrapper);
+              }
+            }
           },
         );
         waiting?.cancel();
@@ -219,7 +253,11 @@ Future<BuiltInRun> runFlutterBatch({
           return;
         }
         if (elsewhere.existsSync()) {
-          failure ??= ranElsewhere;
+          giveUp(ranElsewhere);
+          return;
+        }
+        // Ended for what was found here or in another working copy.
+        if (failure != null) {
           return;
         }
         final read = suitesOf(
@@ -232,9 +270,11 @@ Future<BuiltInRun> runFlutterBatch({
               suites: read.suites,
               wrappers: plan.length,
             )) {
-          failure ??= start == 0 && read.suites[0]?.outcome != Outcome.passed
-              ? notPassingInWrapper
-              : notAttributable;
+          giveUp(
+            start == 0 && read.suites[0]?.outcome != Outcome.passed
+                ? notPassingInWrapper
+                : notAttributable,
+          );
           return;
         }
         // The wrappers the report is sure of, in their order.
@@ -261,7 +301,7 @@ Future<BuiltInRun> runFlutterBatch({
           }
         }
         if (log.failure != null) {
-          failure ??= notPassingInWrapper;
+          giveUp(notPassingInWrapper);
           return;
         }
         final stuck = log.next;
@@ -271,7 +311,7 @@ Future<BuiltInRun> runFlutterBatch({
         // Ended at a wrapper: the mutant of it is left, and the ones after
         // it are started again.
         if (plan[stuck] == noMutant && stuck == 0) {
-          failure ??= notEndedWithoutMutant;
+          giveUp(notEndedWithoutMutant);
           return;
         }
         if (plan[stuck] != noMutant) {
@@ -283,9 +323,10 @@ Future<BuiltInRun> runFlutterBatch({
         ];
       }
     } on FileSystemException catch (error) {
-      failure ??=
-          'the mutants cannot be written into a working copy '
-          '(${error.osError?.message ?? error.message})';
+      giveUp(
+        'the mutants cannot be written into a working copy '
+        '(${error.osError?.message ?? error.message})',
+      );
     } finally {
       // The copy is used again, for this file and for the next ones.
       try {

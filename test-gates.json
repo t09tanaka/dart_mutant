@@ -77,7 +77,7 @@
     },
     {
       "path": "lib/src/flutter_batch.dart",
-      "decides": "Which test command can run the test files of many mutants of a Flutter package in one start, the test file of a mutant and what it compares before it runs its tests, which test files cannot be called that way, what the report of the test runner says of each of them, and whether a start ended the way its report says",
+      "decides": "Which test command can run the test files of many mutants of a Flutter package in one start, the test file of a mutant and what it compares before it runs its tests, which test files cannot be called that way, what the report of the test runner says of each of them, whether a start ended the way its report says, and whether a start is given up when its first test file has ended",
       "impact": "A mutant is reported as killed on a test that failed for what the tests of another mutant left, on an error of the test runner, or on a report that belongs to another test file"
     },
     {
