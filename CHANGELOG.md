@@ -37,6 +37,14 @@ is run by a process of its own. The statuses are those of 0.1.1, which
 - A failure is not believed either when what the process printed has the
   form of a compiler error: a start of the test runner with that output is
   read as `CompileError` (as 0.1 reads it), so the mutant gets that start.
+- After the first test of a mutant that fails for good, such a process
+  runs nothing that `dart test --fail-fast` does not run either: no other
+  test, with its `setUp` and `tearDown`, and no `setUpAll` or `tearDownAll`
+  of a later group. Its tests are run by the engine of the test runner
+  (`Engine` of `package:test_core`, in the process), which is told what
+  `--fail-fast` tells it, so the files that the tests of a killed mutant
+  leave in the package for the next one are those of a start of the test
+  runner.
 - A test of this package requires that every mutant has the status of a
   start of the test runner of its own, of a package of tests that are easy
   to get wrong (`test/fixtures/hazards`, `test/commands/hazards_test.dart`):

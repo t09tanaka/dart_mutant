@@ -379,17 +379,25 @@ void main() {
       ],
     });
 
-    test('test, with test_api to ask how a test went', () {
+    test('test, with test_api to ask how a test went and test_core to run '
+        'the tests', () {
       expect(
-        testLibraryOf(config(['flutter_test', 'test_api', 'test'])),
+        testLibraryOf(
+          config(['flutter_test', 'test_api', 'test_core', 'test']),
+        ),
         'package:test/test.dart',
       );
     });
 
     test('one of them is missing, or there is no package configuration to '
         'speak of', () {
-      expect(testLibraryOf(config(['flutter_test', 'test_api'])), isNull);
-      expect(testLibraryOf(config(['tests', 'test_api'])), isNull);
+      expect(
+        testLibraryOf(config(['flutter_test', 'test_api', 'test_core'])),
+        isNull,
+      );
+      expect(testLibraryOf(config(['tests', 'test_api', 'test_core'])), isNull);
+      expect(testLibraryOf(config(['test', 'test_core'])), isNull);
+      expect(testLibraryOf(config(['test', 'test_api'])), isNull);
       expect(testLibraryOf(config(['test'])), isNull);
       expect(testLibraryOf(null), isNull);
       expect(testLibraryOf('{'), isNull);
@@ -402,8 +410,8 @@ void main() {
   });
 
   test('driverSource: the mutant is at work before the tests are declared, '
-      'the driver writes down itself how each test went, and a test is not '
-      'run after another failed for good', () {
+      'the driver writes down itself how each test went, and the engine '
+      'stops at the first test that failed for good', () {
     expect(
       driverSource(
         testLibrary: 'package:test/test.dart',
@@ -418,7 +426,16 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:test/test.dart';
+import 'package:test_api/backend.dart';
+import 'package:test_api/src/backend/declarer.dart';
 import 'package:test_api/src/backend/invoker.dart';
+import 'package:test_core/src/runner/engine.dart';
+import 'package:test_core/src/runner/plugin/environment.dart';
+import 'package:test_core/src/runner/reporter/expanded.dart';
+import 'package:test_core/src/runner/runner_suite.dart';
+import 'package:test_core/src/runner/suite.dart';
+import 'package:test_core/src/util/os.dart';
+import 'package:test_core/src/util/print_sink.dart';
 
 import 'package:p/a.dart' as target;
 import 'it\'s/b_test.dart' as tests;
@@ -430,45 +447,50 @@ void _note(String what, [int? test]) => File('$_state/log').writeAsStringSync(
   mode: FileMode.append,
 );
 
-void main(List<String> arguments) {
+Future<void> main(List<String> arguments) async {
   final id = int.parse(arguments.single);
   target.$dartMutantActive = id;
   _note('load');
   final numbers = Expando<int>();
   var count = 0;
-  Object? failed;
-  Object? skipped;
-  tearDownAll(() {
-    if (failed == null) {
-      Timer(const Duration(milliseconds: 200), () => exit(0));
-    }
+  final declarer = Declarer(isStandalone: true);
+  declarer.declare(() {
+    setUp(() => numbers[Invoker.current!.liveTest] ??= count++);
+    tearDown(() {
+      final test = Invoker.current!.liveTest;
+      _note(test.state.result.isPassing ? 'pass' : 'fail', numbers[test]);
+    });
+    tests.main();
   });
-  setUp(() {
-    final test = Invoker.current!.liveTest;
-    numbers[test] ??= count++;
-    if (id != -1 && failed != null && !identical(failed, test)) {
-      skipped = test;
-      _note('skip', numbers[test]);
-      throw StateError('dart_mutant: not run, a test before it failed');
-    }
-  });
-  tearDown(() {
-    final test = Invoker.current!.liveTest;
-    if (identical(skipped, test)) {
-      return;
-    }
-    if (test.state.result.isPassing) {
-      _note('pass', numbers[test]);
-      if (identical(failed, test)) {
-        failed = null;
-      }
-    } else {
-      _note('fail', numbers[test]);
-      failed = test;
-    }
-  });
-  tests.main();
   _note('declared');
+  await pumpEventQueue(times: 20);
+  final engine = Engine(stopOnFirstFailure: id != -1)
+    ..suiteSink.add(
+      RunnerSuite(
+        const PluginEnvironment(),
+        SuiteConfiguration.empty,
+        declarer.build(),
+        SuitePlatform(Runtime.vm, compiler: null, os: currentOSGuess),
+      ),
+    )
+    ..suiteSink.close();
+  ExpandedReporter.watch(
+    engine,
+    PrintSink(),
+    color: false,
+    printPath: false,
+    printPlatform: false,
+  );
+  final passed = await runZoned(
+    () => Invoker.guard(engine.run),
+    zoneValues: {#test.declarer: declarer},
+  );
+  if (passed == true) {
+    Timer(const Duration(milliseconds: 200), () => exit(0));
+  } else {
+    print('');
+    unawaited(Future<void>.error('dart_mutant: not every test passed'));
+  }
 }
 ''',
     );
@@ -540,10 +562,10 @@ void main(List<String> arguments) {
 
     test('a test failed: its driver wrote that down after declaring its '
         'tests, and its process ended with another exit code than 0', () {
-      expect(
-        of([255], ['load 0', 'declared 0', 'pass 0 0', 'fail 0 1', 'skip 0 2']),
-        (outcome: Outcome.failed, tests: 3),
-      );
+      expect(of([255], ['load 0', 'declared 0', 'pass 0 0', 'fail 0 1']), (
+        outcome: Outcome.failed,
+        tests: 2,
+      ));
       expect(of([1], ['declared 0', 'fail 0 0']).outcome, Outcome.failed);
       // In the second test file, when the first passed.
       expect(
@@ -612,13 +634,9 @@ void main(List<String> arguments) {
       );
     });
 
-    test('not every test file had its process, or a test was left out', () {
+    test('not every test file had its process', () {
       expect(
         of([0], ['declared 0', 'pass 0 0'], tests: 2).outcome,
-        Outcome.undecided,
-      );
-      expect(
-        of([0], ['declared 0', 'pass 0 0', 'skip 0 1']).outcome,
         Outcome.undecided,
       );
       expect(

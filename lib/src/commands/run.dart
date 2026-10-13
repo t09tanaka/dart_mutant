@@ -721,10 +721,10 @@ Future<int> _locked(
   final command = testCommandFor(flutter: flutter, override: args.command);
   final shown = command.join(' ');
   // What it takes to run the tests of a file as a program of their own,
-  // once per built-in mutant: `package:test` and `package:test_api` in the
-  // package, and a test command of the form `dart test`. A package that
-  // lacks one of them (a Flutter package: its tests need `flutter test`)
-  // is run one by one, as with --one-by-one.
+  // once per built-in mutant: `package:test`, `package:test_api` and
+  // `package:test_core` in the package, and a test command of the form
+  // `dart test`. A package that lacks one of them (a Flutter package: its
+  // tests need `flutter test`) is run one by one, as with --one-by-one.
   final testLibrary = testLibraryOf(packageConfig);
   final dart = dartOf(command);
   // With the mutants built in, every test run is in a working copy, also

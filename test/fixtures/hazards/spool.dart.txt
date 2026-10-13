@@ -1,0 +1,41 @@
+import 'dart:io';
+
+/// The sum of [sizes].
+int total(List<int> sizes) {
+  var sum = 0;
+  for (final size in sizes) {
+    sum += size;
+  }
+  return sum;
+}
+
+/// Whether a job of [size] may be taken with the limit [limit].
+bool fits(int size, int limit) => size >= 0 && size <= limit;
+
+/// How many pages [lines] lines take with [perPage] on each.
+int pages(int lines, int perPage) => (lines + perPage - 1) ~/ perPage;
+
+/// [size] within [least] and [most].
+int within(int size, int least, int most) =>
+    size < least ? least : (size > most ? most : size);
+
+/// How many jobs wait in the directory [path]: its files, without the notes
+/// (`.note`) and without what is not yet unpacked (`.part`). None in a
+/// directory that is not there.
+int waiting(String path) {
+  final folder = Directory(path);
+  if (!folder.existsSync()) {
+    return 0;
+  }
+  var count = 0;
+  for (final entity in folder.listSync()) {
+    if (entity.path.endsWith('.note')) {
+      continue;
+    }
+    if (entity.path.endsWith('.part')) {
+      continue;
+    }
+    count++;
+  }
+  return count;
+}

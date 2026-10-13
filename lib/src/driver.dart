@@ -254,8 +254,8 @@ List<String> driverCommand(List<String> dart, String program, int id) => [
 ];
 
 /// `package:test/test.dart` when the package with the package configuration
-/// [packageConfig] has `test`, and `test_api`, from which a driver reads
-/// how a test went; else `null`.
+/// [packageConfig] has `test`, `test_api`, from which a driver reads how a
+/// test went, and `test_core`, with which it runs the tests; else `null`.
 String? testLibraryOf(String? packageConfig) {
   if (packageConfig == null) {
     return null;
@@ -271,7 +271,7 @@ String? testLibraryOf(String? packageConfig) {
     if (packages is List)
       for (final package in packages) asObject(package)?['name'],
   };
-  return names.contains('test') && names.contains('test_api')
+  return names.containsAll(const ['test', 'test_api', 'test_core'])
       ? 'package:test/test.dart'
       : null;
 }
@@ -288,9 +288,15 @@ String? testLibraryOf(String? packageConfig) {
 /// what native code keeps). The mutant is at work before the first line of
 /// the tests and of the file under test runs.
 ///
-/// The tests are run by `package:test` itself, as it runs a test file that
-/// is started as a program: without the test runner, so without what only
-/// the test runner reads (see [configObstacle] and [driverObstacle]).
+/// The tests are run as `package:test` runs a test file that is started
+/// as a program: without the test runner, so without what only the test
+/// runner reads (see [configObstacle] and [driverObstacle]). The driver
+/// does what `package:test` does there itself (the tests are declared in
+/// `main()`, without waiting, and run by an `Engine` of `package:test_core`
+/// in the process), to tell the engine what `--fail-fast` tells that of
+/// the test runner. Neither is part of an API: with a version in which
+/// they are gone the driver does not compile, and no mutant is run this
+/// way.
 ///
 /// **The driver writes down itself what its tests did**, one line each, at
 /// the end of the file `log` in [state] (an absolute directory); see
@@ -302,21 +308,24 @@ String? testLibraryOf(String? packageConfig) {
 /// - After every run of a test, when its `tearDown`s have run, `pass` or
 ///   `fail` with a number for the test. The test framework knows how the
 ///   test went so far, and the driver asks it (`Invoker` of
-///   `package:test_api`, which is not part of its API; with a version in
-///   which that is gone the driver does not compile, and no mutant is run
-///   this way).
-/// - After a test of a mutant failed for good, the other tests are not
-///   run: that is all there is to know about the mutant. A test that is
-///   not run is `skip`. (A test that fails and is tried again, `retry`,
-///   has not failed for good.)
+///   `package:test_api`).
+/// - After a test of a mutant failed for good, nothing is run that
+///   `dart test --fail-fast` does not run either: that is all there is to
+///   know about the mutant, and what is left in the package for the next
+///   one is what a start of the test runner leaves. So no other test, with
+///   its `setUp` and `tearDown`, and no `setUpAll` or `tearDownAll` of a
+///   group that comes later. (The engine is the one of the test runner,
+///   with its `stopOnFirstFailure`. A test that fails and is tried again,
+///   `retry`, has not failed for good.) Without a mutant every test is
+///   run.
 ///
-/// - When all tests have run and none has failed for good, the process is
-///   ended with the exit code 0 a moment later. The test runner ends the
-///   isolate of a test file when its tests have run; a program goes on for
-///   as long as a test left a timer or a port behind. (When a test failed,
-///   `package:test` ends the process itself, with another exit code. That
-///   also happens within the moment when something failed that no test
-///   saw.)
+/// - When all tests have run and passed, the process is ended with the
+///   exit code 0 a moment later. The test runner ends the isolate of a
+///   test file when its tests have run; a program goes on for as long as
+///   a test left a timer or a port behind. (When not, the process is ended
+///   by an error nobody catches, with another exit code, as `package:test`
+///   ends it. That also happens within the moment when something failed
+///   that no test saw.)
 ///
 /// [testLibrary] is what declares `setUp` in the package.
 String driverSource({
@@ -332,7 +341,16 @@ import 'dart:async';
 import 'dart:io';
 
 import ${dartString(testLibrary)};
+import 'package:test_api/backend.dart';
+import 'package:test_api/src/backend/declarer.dart';
 import 'package:test_api/src/backend/invoker.dart';
+import 'package:test_core/src/runner/engine.dart';
+import 'package:test_core/src/runner/plugin/environment.dart';
+import 'package:test_core/src/runner/reporter/expanded.dart';
+import 'package:test_core/src/runner/runner_suite.dart';
+import 'package:test_core/src/runner/suite.dart';
+import 'package:test_core/src/util/os.dart';
+import 'package:test_core/src/util/print_sink.dart';
 
 import ${dartString(target)} as target;
 import ${dartString(test)} as tests;
@@ -344,45 +362,50 @@ void _note(String what, [int? test]) => File('\$_state/log').writeAsStringSync(
   mode: FileMode.append,
 );
 
-void main(List<String> arguments) {
+Future<void> main(List<String> arguments) async {
   final id = int.parse(arguments.single);
   target.$switchName = id;
   _note('load');
   final numbers = Expando<int>();
   var count = 0;
-  Object? failed;
-  Object? skipped;
-  tearDownAll(() {
-    if (failed == null) {
-      Timer(const Duration(milliseconds: 200), () => exit(0));
-    }
+  final declarer = Declarer(isStandalone: true);
+  declarer.declare(() {
+    setUp(() => numbers[Invoker.current!.liveTest] ??= count++);
+    tearDown(() {
+      final test = Invoker.current!.liveTest;
+      _note(test.state.result.isPassing ? 'pass' : 'fail', numbers[test]);
+    });
+    tests.main();
   });
-  setUp(() {
-    final test = Invoker.current!.liveTest;
-    numbers[test] ??= count++;
-    if (id != $noMutant && failed != null && !identical(failed, test)) {
-      skipped = test;
-      _note('skip', numbers[test]);
-      throw StateError('dart_mutant: not run, a test before it failed');
-    }
-  });
-  tearDown(() {
-    final test = Invoker.current!.liveTest;
-    if (identical(skipped, test)) {
-      return;
-    }
-    if (test.state.result.isPassing) {
-      _note('pass', numbers[test]);
-      if (identical(failed, test)) {
-        failed = null;
-      }
-    } else {
-      _note('fail', numbers[test]);
-      failed = test;
-    }
-  });
-  tests.main();
   _note('declared');
+  await pumpEventQueue(times: 20);
+  final engine = Engine(stopOnFirstFailure: id != $noMutant)
+    ..suiteSink.add(
+      RunnerSuite(
+        const PluginEnvironment(),
+        SuiteConfiguration.empty,
+        declarer.build(),
+        SuitePlatform(Runtime.vm, compiler: null, os: currentOSGuess),
+      ),
+    )
+    ..suiteSink.close();
+  ExpandedReporter.watch(
+    engine,
+    PrintSink(),
+    color: false,
+    printPath: false,
+    printPlatform: false,
+  );
+  final passed = await runZoned(
+    () => Invoker.guard(engine.run),
+    zoneValues: {#test.declarer: declarer},
+  );
+  if (passed == true) {
+    Timer(const Duration(milliseconds: 200), () => exit(0));
+  } else {
+    print('');
+    unawaited(Future<void>.error('dart_mutant: not every test passed'));
+  }
 }
 ''';
 
@@ -426,9 +449,9 @@ class Ran {
   /// The exit code of each process that was started and ended by itself.
   final List<int> exitCodes;
 
-  /// What the drivers wrote down, line by line: `load`, `declared`, `pass`,
-  /// `fail` or `skip`, the number of the test file, and for the last three
-  /// the number of the test.
+  /// What the drivers wrote down, line by line: `load`, `declared`, `pass`
+  /// or `fail`, the number of the test file, and for the last two the
+  /// number of the test.
   final List<String> notes;
 
   /// True when a limit of time or of memory ended a process.
@@ -473,7 +496,7 @@ enum Outcome {
 /// as a mutant that does not compile ([Ran.readAsUncompiled]).
 ///
 /// **All tests passed** when every test file had its process, each ended
-/// with 0 and declared its tests, and no test failed or was left out.
+/// with 0 and declared its tests, and no test failed.
 ({Outcome outcome, int tests}) outcomeOf(Ran ran, {required int tests}) {
   final declared = <int>{};
   final last = <(int, int), String>{};
@@ -483,7 +506,7 @@ enum Outcome {
     switch ((words.first, numbers)) {
       case ('declared', [final int file]):
         declared.add(file);
-      case ('pass' || 'fail' || 'skip', [final int file, final int test]):
+      case ('pass' || 'fail', [final int file, final int test]):
         last[(file, test)] = words.first;
     }
   }
