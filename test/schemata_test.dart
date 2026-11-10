@@ -322,6 +322,133 @@ int $dartMutantElsewhere() {
       ]);
     });
 
+    group('the initializer of a private constant', () {
+      /// The wraps of [mutant] in [source] as `keyword prefix node`, where
+      /// keyword is the offset of the `const` it replaces, and the reason.
+      List<String> constants(String source, Mutant mutant) {
+        final found = placesOf(
+          parseString(content: source).unit,
+          source,
+          7,
+          mutant,
+          parseString(content: mutant.applyTo(source)).unit,
+        );
+        return [
+          for (final wrap in found.wraps)
+            '${wrap.keyword} "${wrap.prefix}" '
+                '${source.substring(wrap.offset, wrap.end)}',
+          found.reason,
+        ];
+      }
+
+      test('a map literal is a place, as a whole, with constants in it', () {
+        const source = "const _num = <String, int>{'a': 1};";
+        expect(constants(source, change(source, '1', '2')), [
+          '0 "const " <String, int>{\'a\': 1}',
+          constantContext,
+        ]);
+        final wraps = placesOf(
+          parseString(content: source).unit,
+          source,
+          7,
+          change(source, '1', '2'),
+          parseString(content: "const _num = <String, int>{'a': 2};").unit,
+        ).wraps;
+        expect(
+          embed(source, wraps, declared: false),
+          'final _num = (\$dartMutantActive == 7 ? '
+          "(const <String, int>{'a': 2}) : "
+          "(const <String, int>{'a': 1}));",
+        );
+      });
+
+      test('with an explicit const there is no second one', () {
+        const list = 'const _l = const [1];';
+        expect(constants(list, change(list, '1', '2')), [
+          '0 "" const [1]',
+          constantContext,
+        ]);
+        const call = 'class A { static const _a = const B(1); }';
+        expect(constants(call, change(call, '1', '2')), [
+          '17 "" const B(1)',
+          constantContext,
+        ]);
+        const record = 'const _r = (1, 2);';
+        expect(constants(record, change(record, '1', '3')), [
+          '0 "const " (1, 2)',
+          constantContext,
+        ]);
+      });
+
+      test('two mutants of one initializer are two choices', () {
+        const source = 'const _l = [1, 2];';
+        final first = change(source, '1', '3');
+        final second = change(source, '2', '4');
+        Wrap wrapOf(int id, Mutant mutant) => placesOf(
+          parseString(content: source).unit,
+          source,
+          id,
+          mutant,
+          parseString(content: mutant.applyTo(source)).unit,
+        ).wraps.single;
+        expect(
+          embed(source, [wrapOf(1, first), wrapOf(2, second)], declared: false),
+          'final _l = (\$dartMutantActive == 1 ? (const [3, 2]) : '
+          '\$dartMutantActive == 2 ? (const [1, 4]) : (const [1, 2]));',
+        );
+      });
+
+      test('the prefix is in the lead, and in the growth', () {
+        const source = 'const _l = [1];';
+        final wrap = placesOf(
+          parseString(content: source).unit,
+          source,
+          7,
+          change(source, '1', '2'),
+          parseString(content: 'const _l = [2];').unit,
+        ).wraps.single;
+        final embedded = embed(source, [wrap], declared: false);
+        expect(embedded.length, source.length + wrap.growth);
+        expect(
+          embedded.indexOf('const [1]'),
+          source.indexOf('[1]') + wrap.lead - wrap.prefix.length,
+        );
+      });
+
+      test('a public name, a local constant, a variable among others, a '
+          'scalar and an interpolation are in a constant', () {
+        for (final source in [
+          'const l = [1];',
+          'void f() { const l = [1]; }',
+          'void f() { const _l = [1]; }',
+          'const _a = [1], _b = [2];',
+          'const _n = 1 + 2;',
+          'const _s = "a\${1}";',
+          'class A { const A(this.x); final int x; static const _b = A(1); '
+              'final y = const [1]; }',
+        ]) {
+          final mutant = change(source, '1', '2');
+          if (source.contains('_b = A(1)')) {
+            // A static field with a constructor call is eligible.
+            expect(constants(source, mutant).last, constantContext);
+            continue;
+          }
+          expect(
+            constants(source, mutant)
+                .where((text) => !text.startsWith('null'))
+                .where((text) => text.startsWith(RegExp(r'\d'))),
+            isEmpty,
+            reason: source,
+          );
+        }
+      });
+
+      test('a library with a part directive has none', () {
+        const source = "part 'p.dart';\nconst _l = [1];";
+        expect(constants(source, change(source, '1', '2')), [constantContext]);
+      });
+    });
+
     test('what is longer than the longest alternative ends the search', () {
       final filler = 'g(); ' * (longestAlternative ~/ 5);
       final source = 'void f() { if (a) { h(1 + 2); } $filler }';

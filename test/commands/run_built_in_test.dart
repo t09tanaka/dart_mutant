@@ -8,6 +8,7 @@ import 'dart:io';
 
 import 'package:dart_mutant/dart_mutant.dart';
 import 'package:dart_mutant/src/args.dart';
+import 'package:dart_mutant/src/commands/built_in.dart';
 import 'package:dart_mutant/src/commands/merge.dart';
 import 'package:dart_mutant/src/commands/run.dart';
 import 'package:dart_mutant/src/memory.dart';
@@ -149,6 +150,52 @@ const lookup = '''
 const names = ['zero', 'one'];
 final limit = names.length + 1;
 String nameOf(int n) => n < limit - 1 ? names[n] : 'many';
+''';
+
+// A private constant next to code that reads it: all but its mutants'
+// place is a constant.
+const prices = '''
+const _prices = <String, int>{'apple': 3, 'pear': 5};
+
+int price(String name) => _prices[name] ?? 0;
+''';
+
+// A private constant that is read in another isolate, next to code that is
+// not in a constant.
+const later = '''
+import 'dart:isolate';
+
+const _rates = <String, int>{'a': 2, 'b': 4};
+
+Future<int> rate(String name) => Isolate.run(() => _rates[name]!);
+
+int twice(int n) => n * 2;
+''';
+
+const laterTest = '''
+import 'package:built_in_fixture/later.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('a rate', () async {
+    expect(await rate('a'), 2);
+    expect(await rate('b'), 4);
+  });
+  test('twice', () => expect(twice(3), 6));
+}
+''';
+
+const pricesTest = '''
+import 'package:built_in_fixture/prices.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('a price', () {
+    expect(price('apple'), 3);
+    expect(price('pear'), 5);
+    expect(price('plum'), 0);
+  });
+}
 ''';
 
 const lookupTest = '''
@@ -335,6 +382,10 @@ dev_dependencies:
     write('test/next_test.dart', nextTest);
     write('lib/sign.dart', sign);
     write('test/sign_test.dart', signTest(slowLog));
+    write('lib/prices.dart', prices);
+    write('test/prices_test.dart', pricesTest);
+    write('lib/later.dart', later);
+    write('test/later_test.dart', laterTest);
     write('lib/lookup.dart', lookup);
     write('test/lookup_test.dart', lookupTest);
     write('lib/either.dart', either);
@@ -408,6 +459,7 @@ dev_dependencies:
     // However few mutants the file has: these tests are about the mutants
     // that are built in.
     int buildInFrom = 0,
+    String Function(BuiltIn built)? contentOf,
   }) async {
     final before = tree();
     await runMutation(
@@ -426,6 +478,7 @@ dev_dependencies:
       limitOf: limit ?? processLimit,
       memoryLimitOf: memory ?? memoryLimit,
       buildInFrom: buildInFrom,
+      contentOf: contentOf,
     );
     expect(tree(), before, reason: 'the package was changed');
     expect(Directory('${dir.path}/$stateDir/work').existsSync(), isFalse);
@@ -665,6 +718,98 @@ dev_dependencies:
     final most = 6 * 2 + 6 * 2 * measuredAgain + 2 * killed;
     expect(slowTests(), lessThanOrEqualTo(most));
     expect(most, lessThan(6 * 2 + 6 * builtIn.length));
+  });
+
+  test('the mutants in a private constant are built in, and every status is '
+      'the one of a start of its own', () async {
+    final usual = await mutate('lib/prices.dart', schemata: false);
+    out.clear();
+    final builtIn = await mutate('lib/prices.dart', schemata: true);
+    expect(builtIn, usual);
+    expect(usual, isNotEmpty);
+    // A constant that silently pushed the file back to a start of the test
+    // runner for each mutant would be found here.
+    expect(err, isEmpty);
+    final line = builtInLine('lib/prices.dart');
+    expect(
+      line,
+      matches(
+        r'^  lib/prices\.dart: \d+ killed with the mutants '
+        r'built in$',
+      ),
+    );
+    expect(line, isNot(contains('in a constant')));
+    expect(
+      out,
+      contains(
+        matches(
+          r'^  lib/prices\.dart: (\d+) of \1 mutant\(s\) built in, each run '
+          r'by a process of its own',
+        ),
+      ),
+    );
+  });
+
+  test(
+    'constants that cannot be built in with the tests are said so, and '
+    'their mutants get a start of their own, with the same statuses',
+    () async {
+      final usual = await mutate('lib/prices.dart', schemata: false);
+      out.clear();
+      final builtIn = await mutate(
+        'lib/prices.dart',
+        schemata: true,
+        // The program does not compile where a constant is declared final:
+        // as if something outside the file had needed it.
+        contentOf: (built) => built.constants.isEmpty
+            ? built.content
+            : '${built.content}\nint broken = ;\n',
+      );
+      expect(builtIn, usual);
+      expect(
+        err,
+        contains(
+          matches(
+            r'^dart_mutant run: lib/prices\.dart: the drivers did not work '
+            r'with the \d+ mutant\(s\) in constant declarations built in '
+            r'\(the tests cannot be compiled',
+          ),
+        ),
+      );
+      expect(
+        builtInLine('lib/prices.dart'),
+        matches(
+          r'^  lib/prices\.dart: \d+ killed with the mutants built in; '
+          r'\d+ cannot be built in \(\d+ in a constant\)',
+        ),
+      );
+    },
+  );
+
+  test('a constant that is read in another isolate is built in no more: the '
+      'rest of the file is, and every status is the one of a start of its '
+      'own', () async {
+    final usual = await mutate('lib/later.dart', schemata: false);
+    out.clear();
+    final builtIn = await mutate('lib/later.dart', schemata: true);
+    expect(builtIn, usual);
+    expect(
+      err,
+      contains(
+        matches(
+          r'^dart_mutant run: lib/later\.dart: the drivers did not work '
+          r'with the \d+ mutant\(s\) in constant declarations built in '
+          r'\(code of the file ran in another isolate',
+        ),
+      ),
+    );
+    expect(
+      builtInLine('lib/later.dart'),
+      matches(
+        r'^  lib/later\.dart: \d+ killed with the mutants built in; '
+        r'\d+ cannot be built in \(\d+ in a constant\)',
+      ),
+    );
   });
 
   test('what cannot be built in is run the usual way, and the rest is '

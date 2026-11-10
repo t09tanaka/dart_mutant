@@ -106,6 +106,8 @@ class Wrap {
     this.end,
     this.alternative, {
     required this.statement,
+    this.keyword,
+    this.prefix = '',
   });
 
   /// The number of the mutant in its file.
@@ -119,13 +121,23 @@ class Wrap {
   /// True when the node is a statement, false when it is an expression.
   final bool statement;
 
+  /// Where the `const` is of the declaration whose initializer this node
+  /// is, when it is built in as `final` (see [placesOf]); [embed] writes
+  /// `final` there, which is as long.
+  final int? keyword;
+
+  /// What is written in front of the node, and of each of its mutants
+  /// (`const ` for a constant that is declared `final`, where every choice
+  /// has to be a constant itself), or nothing.
+  final String prefix;
+
   String get _choice => statement
       ? 'if ($switchName == $id) { $alternative } else '
-      : '$switchName == $id ? ($alternative) : ';
+      : '$switchName == $id ? ($prefix$alternative) : ';
 
   /// How far the node is from the start of what it is replaced with, when
   /// this is the only mutant built into it.
-  int get lead => _open.length + _choice.length + _open.length;
+  int get lead => _open.length + _choice.length + _open.length + prefix.length;
 
   String get _open => statement ? '{ ' : '(';
 
@@ -142,6 +154,16 @@ class Wrap {
 ///
 /// Without [declared] the variable is not declared: for a look at one part.
 String embed(String source, List<Wrap> wraps, {bool declared = true}) {
+  // A constant that is built in is no constant any more: `final` is as long
+  // as `const`, and nothing moves.
+  var text = source;
+  for (final at in {
+    for (final wrap in wraps)
+      if (wrap.keyword != null) wrap.keyword!,
+  }) {
+    text = text.replaceRange(at, at + 'const'.length, 'final');
+  }
+
   String rewrite(int from, int to, List<Wrap> inside) {
     final sorted = inSourceOrderOf(inside);
     final out = StringBuffer();
@@ -156,13 +178,14 @@ String embed(String source, List<Wrap> wraps, {bool declared = true}) {
           wrap.end == head.end &&
           wrap.statement == head.statement;
       out
-        ..write(source.substring(at, head.offset))
+        ..write(text.substring(at, head.offset))
         ..write(head._open)
         ..writeAll([
           for (final wrap in sorted)
             if (together(wrap)) wrap._choice,
         ])
         ..write(head._open)
+        ..write(head.prefix)
         ..write(
           rewrite(head.offset, head.end, [
             for (final wrap in sorted)
@@ -175,7 +198,7 @@ String embed(String source, List<Wrap> wraps, {bool declared = true}) {
         ..write(head._close);
       at = head.end;
     }
-    out.write(source.substring(at, to));
+    out.write(text.substring(at, to));
     return out.toString();
   }
 
@@ -267,6 +290,44 @@ bool _isNoValue(Expression node) {
       node is FunctionExpression && parent is FunctionDeclaration;
 }
 
+/// Where the `const` is of the declaration whose initializer [node] is, when
+/// that constant can be declared `final` with a choice of constants as its
+/// initializer, and `null` when it cannot.
+///
+/// It can when it is a top-level variable or a static field with a private
+/// name (nothing of another library names it; that a part might is for the
+/// caller), the only variable of its declaration, and its initializer is a
+/// collection, a record or a call of a constructor. Whether the code of its
+/// own library that names it needs it to be a constant (a default value, an
+/// annotation, a `case`, another constant) is for the analyzer to say about
+/// the program that is made of it.
+int? _constantDeclaration(Expression node) {
+  final variable = node.parent;
+  if (variable is! VariableDeclaration || variable.initializer != node) {
+    return null;
+  }
+  final list = variable.parent;
+  if (list is! VariableDeclarationList ||
+      !list.isConst ||
+      list.variables.length != 1 ||
+      list.keyword?.lexeme != 'const' ||
+      !variable.name.lexeme.startsWith('_')) {
+    return null;
+  }
+  // A top-level variable or a static field (a constant is no other field).
+  if (list.parent is VariableDeclarationStatement) {
+    return null;
+  }
+  return node is TypedLiteral ||
+          node is InstanceCreationExpression ||
+          node is RecordLiteral
+      ? list.keyword!.offset
+      : null;
+}
+
+/// True when [node], a constant, says so itself: `const [1]`.
+bool _startsWithConst(Expression node) => node.beginToken.lexeme == 'const';
+
 /// Where [mutant] (the mutant [id] of [source], whose syntax tree is [unit])
 /// could be built in: every expression and statement around it that is an
 /// expression or a statement with the mutant in it as well ([mutated] is the
@@ -274,6 +335,11 @@ bool _isNoValue(Expression node) {
 ///
 /// Left out: a statement that declares a name, what is no value, a
 /// constant, and what is longer than [longestAlternative].
+///
+/// A constant is a place only as a whole, when it is the initializer of a
+/// constant that [_constantDeclaration] says can be declared `final`
+/// instead: then the choice is between constants (see [Wrap.prefix]), and
+/// the one that is at work is the constant that program would have.
 ///
 /// The initializer of a top-level variable or of a static field is a place
 /// like any other: it runs once in an isolate, when the variable is first
@@ -295,6 +361,7 @@ Places placesOf(
   };
   final wraps = <Wrap>[];
   var reason = noPlace;
+  final parts = unit.directives.any((directive) => directive is PartDirective);
   for (final node in _around(unit, mutant.offset, mutant.end)) {
     final statement = node is Statement && !_declares(node);
     final expression = node is Expression && !_isNoValue(node);
@@ -310,9 +377,13 @@ Places placesOf(
     if (node.length + growth > longestAlternative) {
       break;
     }
+    int? keyword;
     if (node is Expression && node.inConstantContext) {
       reason = constantContext;
-      continue;
+      keyword = parts ? null : _constantDeclaration(node);
+      if (keyword == null) {
+        continue;
+      }
     }
     wraps.add(
       Wrap(
@@ -323,6 +394,10 @@ Places placesOf(
         '${mutant.replacement}'
         '${source.substring(mutant.end, node.end)}',
         statement: statement,
+        keyword: keyword,
+        prefix: keyword == null || _startsWithConst(node as Expression)
+            ? ''
+            : 'const ',
       ),
     );
   }
@@ -407,7 +482,8 @@ Map<(int, int), String> typesOf(CompilationUnit unit) {
 /// [other] is that program with the node replaced by something [growth]
 /// longer. With [lead], the node itself is still in it, that far from where
 /// it started, and is compared as well; without, what is inside the node is
-/// not compared.
+/// not compared. A [prefix] of the node (see [Wrap.prefix]) is part of the
+/// node itself, the first thing in it.
 bool sameTypesOutside(
   Map<(int, int), String> original,
   Map<(int, int), String> other, {
@@ -415,6 +491,7 @@ bool sameTypesOutside(
   required int to,
   required int growth,
   int? lead,
+  int prefix = 0,
 }) {
   for (final MapEntry(key: (offset, end), value: type) in original.entries) {
     final (int, int)? place;
@@ -423,7 +500,11 @@ bool sameTypesOutside(
     } else if (offset >= to) {
       place = (offset + growth, end + growth);
     } else if (offset >= from && end <= to) {
-      place = lead == null ? null : (offset + lead, end + lead);
+      place = lead == null
+          ? null
+          : offset == from && end == to
+          ? (offset + lead - prefix, end + lead)
+          : (offset + lead, end + lead);
     } else {
       place = (offset, end + growth);
     }

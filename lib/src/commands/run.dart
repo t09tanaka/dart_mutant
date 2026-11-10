@@ -594,7 +594,8 @@ Future<({String? aborted, String? inPlace})> _runInCopies({
 /// the tests of this package only; the command line always uses
 /// [processLimit] and [memoryLimit]. So is [buildInFrom], the number of
 /// mutants from which those of a file are built into it: the command line
-/// always uses [mutantsToBuildIn].
+/// always uses [mutantsToBuildIn]. So is [contentOf], the code that is run
+/// for what is built in.
 ///
 /// Returns the exit code: 0 when no mutant survived, 1 when one did or a
 /// file could not be mutation tested, 130 / 143 / 129 when interrupted.
@@ -606,6 +607,7 @@ Future<int> runMutation(
   Duration Function(Duration baseline) limitOf = processLimit,
   int Function(int baseline) memoryLimitOf = memoryLimit,
   int buildInFrom = mutantsToBuildIn,
+  String Function(BuiltIn built)? contentOf,
 }) async {
   if (!Directory(args.dir).existsSync()) {
     throw UsageError('--dir ${args.dir} is not a directory');
@@ -655,6 +657,7 @@ Future<int> runMutation(
       limitOf: limitOf,
       memoryLimitOf: memoryLimitOf,
       buildInFrom: buildInFrom,
+      contentOf: contentOf ?? (built) => built.content,
     );
   } finally {
     lock.release();
@@ -675,6 +678,7 @@ Future<int> _locked(
   required Duration Function(Duration baseline) limitOf,
   required int Function(int baseline) memoryLimitOf,
   required int buildInFrom,
+  required String Function(BuiltIn built) contentOf,
 }) async {
   // A report of an earlier run must not be read as the result of this one
   // if this one writes none. With --only that holds for the files of this
@@ -1063,15 +1067,18 @@ Future<int> _locked(
               return short < usual ? short : usual;
             }
 
-            final outcome = batch
-                ? await runFlutterBatch(
-                    copies: used,
+            final workingCopies = used;
+            Future<BuiltInRun> drive(BuiltIn b) => b.ids.isEmpty
+                ? Future.value(const BuiltInRun())
+                : batch
+                ? runFlutterBatch(
+                    copies: workingCopies,
                     root: root,
                     path: path,
                     original: original,
-                    content: built.content,
-                    guardAt: built.guardAt,
-                    ids: built.ids,
+                    content: contentOf(b),
+                    guardAt: b.guardAt,
+                    ids: b.ids,
                     test: target.tests.single,
                     command: flutterCommand!,
                     testLibrary: flutterTestLibrary!,
@@ -1085,14 +1092,14 @@ Future<int> _locked(
                     signals: signals,
                     refresh: copies.refresh,
                   )
-                : await runBuiltIn(
-                    copies: used,
+                : runBuiltIn(
+                    copies: workingCopies,
                     root: root,
                     path: path,
                     original: original,
-                    content: built.content,
-                    guardAt: built.guardAt,
-                    ids: built.ids,
+                    content: contentOf(b),
+                    guardAt: b.guardAt,
+                    ids: b.ids,
                     tests: target.tests,
                     dart: dart!,
                     testLibrary: testLibrary!,
@@ -1101,6 +1108,30 @@ Future<int> _locked(
                     memoryLimitOf: memoryLimitOf,
                     signals: signals,
                   );
+            var outcome = await drive(built);
+            if (const {
+                  notCompiled,
+                  ranElsewhere,
+                  notPassingInWrapper,
+                }.contains(outcome.failure) &&
+                built.constants.isNotEmpty &&
+                outcome.aborted == null &&
+                signals.signal == null) {
+              // The one check that sees the other libraries and the tests
+              // (and a read of a constant in another isolate): the file is
+              // built again, once, without the constants that it declares
+              // `final`, and their mutants are run one by one. An abort is
+              // not retried: it is the outcome that goes on below.
+              io.err(
+                '$executable run: $path: the drivers did not work with the '
+                '${built.constants.length} mutant(s) in constant '
+                'declarations built in (${outcome.failure}); they were run '
+                'without them, and those mutants get a start of the test '
+                'runner of their own',
+              );
+              built = built.withoutConstants();
+              outcome = await drive(built);
+            }
             if (outcome.aborted != null) {
               aborted = outcome.aborted;
             }

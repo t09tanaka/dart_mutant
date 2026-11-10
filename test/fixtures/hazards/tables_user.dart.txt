@@ -1,0 +1,14 @@
+import 'tables.dart';
+
+/// Another library of the package: a public constant in a `case`, and in a
+/// constant.
+const usersLimits = [publicLimit, publicLimit + 1];
+
+String named(int value) {
+  switch (value) {
+    case publicLimit:
+      return 'limit';
+    default:
+      return 'no ${publicTable.length}';
+  }
+}

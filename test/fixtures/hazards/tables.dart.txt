@@ -1,0 +1,100 @@
+/// A class with a `const` constructor, and an annotation.
+class Box {
+  const Box(this.items);
+
+  final List<int> items;
+}
+
+class Tag {
+  const Tag(this.items);
+
+  final List<int> items;
+}
+
+/// No test reads its last element: a mutant there survives.
+const _limits = [1, 2, 3, 4];
+
+/// A test asks whether it is the same object as an equal constant.
+const _a = [10, 20];
+
+/// A test asks that it cannot be changed.
+const _m = {'x': 1, 'y': 2};
+
+const _ids = {1, 2, 3};
+
+/// Used where a constant is required.
+const _b = [_a];
+const _c = _a;
+const _two = 2;
+const _span = _two * 3 + 1;
+const _box = Box(_a);
+
+/// Used by another library of the package, and by a test, in a constant.
+const publicLimit = 7;
+const publicTable = {'p': 1, 'q': 2};
+
+int limit(int index) => _limits[index];
+
+bool sameAsLiteral() => identical(_a, const [10, 20]);
+
+bool sameConstants() => identical(_b[0], _c);
+
+void change() {
+  _m['x'] = 5;
+}
+
+void grow() {
+  _a.add(30);
+}
+
+bool known(int id) => _ids.contains(id);
+
+int look(String key) => _m[key] ?? 0;
+
+@Tag(_a)
+int sum({List<int> values = _a}) {
+  var total = 0;
+  for (final value in values) {
+    total += value;
+  }
+  return total;
+}
+
+String kind(int value) {
+  switch (value) {
+    case _two:
+      return 'two';
+    case _span:
+      return 'span';
+    default:
+      return 'other';
+  }
+}
+
+int boxed() => const Box(_a).items.length + _box.items.first;
+
+int nested() => _b.first.last;
+
+class Grid {
+  /// Used at runtime only.
+  static const sizes = [3, 5, 8];
+
+  static const _unit = 4;
+
+  static int total() {
+    var total = 0;
+    for (final size in sizes) {
+      total += size;
+    }
+    return total + _unit;
+  }
+}
+
+int localSum() {
+  const steps = [1, 2, 3];
+  var total = 0;
+  for (final step in steps) {
+    total += step * 2;
+  }
+  return total;
+}
