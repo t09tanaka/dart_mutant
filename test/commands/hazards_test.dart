@@ -159,7 +159,7 @@ void main() {
     'spool': '40 of 40 built in, 32 killed there, 8 left',
     // Every failure of it is printed in the form of a compiler error.
     'diag': '4 of 4 built in, 0 killed there, 4 left',
-    'tables': '40 of 94 built in, 33 killed there, 7 left',
+    'tables': '56 of 94 built in, 46 killed there, 10 left',
   };
 
   /// Files with fewer mutants than are built in ([mutantsToBuildIn]), and how
