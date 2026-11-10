@@ -14,8 +14,10 @@
   of the file needs as a constant (a default value, an annotation, a
   `case`, another constant), one among several in a declaration, and every
   constant of a file with `part` directives stay "in a constant". If the
-  tests cannot be compiled with the constants built in, the file is built
-  again without them, with one line on standard error. The statuses are
+  drivers do not work with the constants built in (the tests cannot be
+  compiled that way, do not pass the first time, or read a constant in
+  another isolate), the file is built again once without them, with one
+  line on standard error. The statuses are
   unchanged, so the results of earlier runs are still reused.
 
 ## 0.2.1 (2026-10-13)

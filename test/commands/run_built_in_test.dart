@@ -160,6 +160,31 @@ const _prices = <String, int>{'apple': 3, 'pear': 5};
 int price(String name) => _prices[name] ?? 0;
 ''';
 
+// A private constant that is read in another isolate, next to code that is
+// not in a constant.
+const later = '''
+import 'dart:isolate';
+
+const _rates = <String, int>{'a': 2, 'b': 4};
+
+Future<int> rate(String name) => Isolate.run(() => _rates[name]!);
+
+int twice(int n) => n * 2;
+''';
+
+const laterTest = '''
+import 'package:built_in_fixture/later.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('a rate', () async {
+    expect(await rate('a'), 2);
+    expect(await rate('b'), 4);
+  });
+  test('twice', () => expect(twice(3), 6));
+}
+''';
+
 const pricesTest = '''
 import 'package:built_in_fixture/prices.dart';
 import 'package:test/test.dart';
@@ -359,6 +384,8 @@ dev_dependencies:
     write('test/sign_test.dart', signTest(slowLog));
     write('lib/prices.dart', prices);
     write('test/prices_test.dart', pricesTest);
+    write('lib/later.dart', later);
+    write('test/later_test.dart', laterTest);
     write('lib/lookup.dart', lookup);
     write('test/lookup_test.dart', lookupTest);
     write('lib/either.dart', either);
@@ -743,9 +770,9 @@ dev_dependencies:
         err,
         contains(
           matches(
-            r'^dart_mutant run: lib/prices\.dart: its \d+ mutant\(s\) in '
-            r'constant declarations could not be built in \(the tests cannot '
-            r'be compiled',
+            r'^dart_mutant run: lib/prices\.dart: the drivers did not work '
+            r'with the \d+ mutant\(s\) in constant declarations built in '
+            r'\(the tests cannot be compiled',
           ),
         ),
       );
@@ -758,6 +785,32 @@ dev_dependencies:
       );
     },
   );
+
+  test('a constant that is read in another isolate is built in no more: the '
+      'rest of the file is, and every status is the one of a start of its '
+      'own', () async {
+    final usual = await mutate('lib/later.dart', schemata: false);
+    out.clear();
+    final builtIn = await mutate('lib/later.dart', schemata: true);
+    expect(builtIn, usual);
+    expect(
+      err,
+      contains(
+        matches(
+          r'^dart_mutant run: lib/later\.dart: the drivers did not work '
+          r'with the \d+ mutant\(s\) in constant declarations built in '
+          r'\(code of the file ran in another isolate',
+        ),
+      ),
+    );
+    expect(
+      builtInLine('lib/later.dart'),
+      matches(
+        r'^  lib/later\.dart: \d+ killed with the mutants built in; '
+        r'\d+ cannot be built in \(\d+ in a constant\)',
+      ),
+    );
+  });
 
   test('what cannot be built in is run the usual way, and the rest is '
       'built in: also the initializer of a top-level variable, which runs '

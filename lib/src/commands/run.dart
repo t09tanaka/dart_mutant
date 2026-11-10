@@ -1109,18 +1109,25 @@ Future<int> _locked(
                     signals: signals,
                   );
             var outcome = await drive(built);
-            if (!batch &&
-                outcome.failure == notCompiled &&
+            if (const {
+                  notCompiled,
+                  ranElsewhere,
+                  notPassingInWrapper,
+                }.contains(outcome.failure) &&
                 built.constants.isNotEmpty &&
+                outcome.aborted == null &&
                 signals.signal == null) {
-              // The one check that sees the other libraries and the tests:
-              // the file is built again without the constants that it
-              // declares `final`, and their mutants are run one by one.
+              // The one check that sees the other libraries and the tests
+              // (and a read of a constant in another isolate): the file is
+              // built again, once, without the constants that it declares
+              // `final`, and their mutants are run one by one. An abort is
+              // not retried: it is the outcome that goes on below.
               io.err(
-                '$executable run: $path: its ${built.constants.length} '
-                'mutant(s) in constant declarations could not be built in '
-                '(${outcome.failure}); they get a start of the test runner '
-                'of their own, and the rest is built in again',
+                '$executable run: $path: the drivers did not work with the '
+                '${built.constants.length} mutant(s) in constant '
+                'declarations built in (${outcome.failure}); they were run '
+                'without them, and those mutants get a start of the test '
+                'runner of their own',
               );
               built = built.withoutConstants();
               outcome = await drive(built);
