@@ -128,6 +128,139 @@ int f(int a) => a + count;
     );
   });
 
+  group('a private constant is declared final, with constants in it', () {
+    test('every choice is a constant, the original too, and the keyword '
+        'changes only for a declaration with a mutant in it', () async {
+      final (built, mutants) = await build('''
+const _m = <String, int>{'a': 1, 'b': 2};
+const _none = <String>{};
+int f(String k) => _m[k] ?? 0;
+''');
+      expect(built.constants, isNotEmpty);
+      expect(mutants.length, greaterThan(built.constants.length));
+      final content = built.content;
+      expect(content, startsWith('final _m = ('));
+      // The program with no mutant at work has the very same constant.
+      expect(
+        content,
+        contains(
+          " : (const <String, int>{'a': 1, 'b': 2}));\n"
+          'const _none = <String>{};',
+        ),
+      );
+      expect(content, contains('? (const <String, int>{'));
+    });
+
+    test('an initializer that says const itself gets no second one, and a '
+        'static field is one too', () async {
+      final (built, _) = await build('''
+class A {
+  static const _l = const [1, 2];
+  static int get first => _l.first;
+}
+''');
+      expect(built.constants, isNotEmpty);
+      expect(built.content, startsWith('class A {\n  static final _l = ('));
+      expect(built.content, isNot(contains('const const')));
+      expect(built.content, contains(' : (const [1, 2]));'));
+    });
+
+    test('what is not eligible stays in a constant', () async {
+      final (built, mutants) = await build('''
+const pub = <int>[1, 2];
+const _one = 1 + 2, _two = [3];
+const _text = 'a\${1 + 1}';
+int f() {
+  const local = <int>[4];
+  return local.first + pub.first + _one + _two.first + _text.length;
+}
+''');
+      expect(built.constants, isEmpty);
+      for (final id in built.left.keys) {
+        expect(built.left[id], constantContext, reason: mutants[id]);
+      }
+      expect(built.left, isNotEmpty);
+      expect(built.content, isNot(contains('final _')));
+    });
+
+    test('a constant that other code of the library needs as a constant is '
+        'left in a constant, with that reason', () async {
+      final (built, mutants) = await build('''
+const _list = <int>[7, 8];
+const _copy = _list;
+void g([List<int> a = _list]) {}
+class K {
+  const K(this.v);
+  final List<int> v;
+}
+const _k = K(_list);
+int use(int x) {
+  switch (x) {
+    case _list.length:
+      return 1;
+    default:
+      return 0;
+  }
+}
+''');
+      final ids = [
+        for (final (id, text) in mutants.indexed)
+          if (text.endsWith('→ 8') || text.endsWith('→ 6')) id,
+      ];
+      expect(ids, isNotEmpty);
+      for (final id in ids) {
+        expect(built.ids, isNot(contains(id)), reason: mutants[id]);
+        expect(built.left[id], constantContext, reason: mutants[id]);
+      }
+      expect(built.constants, isEmpty);
+    });
+
+    test('a library with a part directive is not eligible', () async {
+      package.write('lib/p.dart', "part of 'a.dart';\n");
+      final (built, _) = await build('''
+part 'p.dart';
+const _m = <int>[1, 2];
+int f() => _m.first;
+''');
+      expect(built.constants, isEmpty);
+      expect(built.left, isNotEmpty);
+      expect(built.left.values, everyElement(constantContext));
+    });
+
+    test('two mutants in one initializer are two choices of one '
+        'declaration', () async {
+      final (built, _) = await build('''
+const _m = <int>[1, 2];
+int f() => _m.first + _m.last;
+''');
+      expect(built.constants, hasLength(greaterThanOrEqualTo(2)));
+      expect(RegExp('final _m = ').allMatches(built.content), hasLength(1));
+      expect(
+        RegExp(
+          r'\$dartMutantActive == \d+ \? \(const <int>\[',
+        ).allMatches(built.content),
+        hasLength(built.constants.length),
+      );
+      expect(built.content, contains(': (const <int>[1, 2]))'));
+    });
+
+    test('without the constants the rest is built in as before', () async {
+      final (built, _) = await build('''
+const _m = <int>[1, 2];
+int f(int a) => a + _m.first;
+''');
+      final rest = built.withoutConstants();
+      expect(rest.constants, isEmpty);
+      expect(rest.content, isNot(contains('final _m')));
+      expect(rest.content, contains('const _m = <int>[1, 2];'));
+      expect(rest.ids, isNotEmpty);
+      for (final id in built.constants) {
+        expect(rest.left[id], constantContext);
+        expect(rest.ids, isNot(contains(id)));
+      }
+    });
+  });
+
   group('mutants that each compile in the program, but not together', () {
     // Two decisions that each give `x` a value. With a block of the first
     // emptied the second still does, and the other way round; with one of

@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- **The mutants in a private constant are built in.** The initializer of a
+  top-level `const` or a `static const` whose name starts with `_`, when
+  it is a collection, a record or a call of a constructor (`const _prices
+  = <String, int>{...};`), is no longer a place where nothing can be built
+  in: the declaration becomes `final`, and its value a choice between
+  constants (`const` in front of each, the original too), so that the
+  program without a mutant has the same constant as before. Such a
+  constant was more than a third of the mutants of a file full of lookup
+  tables, each with a start of the test runner of its own. A constant that other code
+  of the file needs as a constant (a default value, an annotation, a
+  `case`, another constant), one among several in a declaration, and every
+  constant of a file with `part` directives stay "in a constant". If the
+  tests cannot be compiled with the constants built in, the file is built
+  again without them, with one line on standard error. The statuses are
+  unchanged, so the results of earlier runs are still reused.
+
 ## 0.2.1 (2026-10-13)
 
 - **The mutants of a Flutter package are built in as well, and run by one

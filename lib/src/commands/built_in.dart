@@ -13,7 +13,14 @@ import '../schemata.dart';
 
 /// The mutants of a file, built into it.
 class BuiltIn {
-  BuiltIn(this.content, this.ids, this.left, {required this.guardAt});
+  BuiltIn(
+    this.content,
+    this.ids,
+    this.left, {
+    required this.guardAt,
+    this.source = '',
+    this.wraps = const [],
+  });
 
   /// The file with a choice for every mutant of [ids], and the variable
   /// that makes it.
@@ -27,6 +34,34 @@ class BuiltIn {
 
   /// The mutants that are not, and why.
   final Map<int, String> left;
+
+  /// The file as it is, and what is built into it.
+  final String source;
+  final List<Wrap> wraps;
+
+  /// The mutants that are built into a constant declaration, which is
+  /// `final` in [content].
+  Set<int> get constants => {
+    for (final wrap in wraps)
+      if (wrap.keyword != null) wrap.id,
+  };
+
+  /// What is built without the constant declarations: their mutants are
+  /// left out, as in a constant.
+  BuiltIn withoutConstants() {
+    final rest = [
+      for (final wrap in wraps)
+        if (wrap.keyword == null) wrap,
+    ];
+    return BuiltIn(
+      embed(source, rest),
+      [for (final wrap in rest) wrap.id],
+      {...left, for (final id in constants) id: constantContext},
+      guardAt: guardAt,
+      source: source,
+      wraps: rest,
+    );
+  }
 
   /// How many mutants are left out for each reason, as a text.
   String get reasons {
@@ -109,6 +144,7 @@ Future<BuiltIn> buildIn(
             to: wrap.end,
             growth: wrap.growth,
             lead: wrap.lead,
+            prefix: wrap.prefix.length,
           )) {
         found = wrap;
         break;
@@ -117,7 +153,13 @@ Future<BuiltIn> buildIn(
     if (found != null) {
       wraps.add(found);
     } else {
-      left[id] = places.wraps.isEmpty ? places.reason : changesProgram;
+      // Only constants that could be declared `final` and did not do: still
+      // a constant.
+      left[id] = places.wraps.isEmpty
+          ? places.reason
+          : places.wraps.every((wrap) => wrap.keyword != null)
+          ? constantContext
+          : changesProgram;
     }
   }
 
@@ -156,6 +198,8 @@ Future<BuiltIn> buildIn(
     [for (final wrap in together) wrap.id],
     left,
     guardAt: guardAt,
+    source: source,
+    wraps: together,
   );
 }
 
