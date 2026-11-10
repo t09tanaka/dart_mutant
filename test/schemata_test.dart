@@ -878,5 +878,47 @@ void h(P p, Set<int> b, E e) { p++; b.size += b(); e.twice; }
         isTrue,
       );
     });
+
+    test('with a prefix, only the node itself starts before its lead, what '
+        'starts or ends with it is moved by the lead alone', () {
+      const types = {
+        (4, 8): 'the node',
+        (4, 6): 'starts with it',
+        (5, 8): 'ends with it',
+        (5, 6): 'inside',
+      };
+      bool prefixed(Map<(int, int), String> other) => sameTypesOutside(
+        types,
+        other,
+        from: 4,
+        to: 8,
+        growth: 3,
+        lead: 2,
+        prefix: 1,
+      );
+      const now = {
+        (5, 10): 'the node',
+        (6, 8): 'starts with it',
+        (7, 10): 'ends with it',
+        (7, 8): 'inside',
+      };
+      expect(prefixed(now), isTrue);
+      // The node where it would be without the prefix.
+      expect(prefixed({...now}..remove((5, 10))), isFalse);
+      expect(prefixed({...now, (6, 10): 'the node'}..remove((5, 10))), isFalse);
+      // What starts with the node, moved by the prefix as well.
+      expect(
+        prefixed({...now, (5, 8): 'starts with it'}..remove((6, 8))),
+        isFalse,
+      );
+      expect(prefixed({...now, (6, 8): 'other'}), isFalse);
+      // What ends with the node, moved by the prefix as well.
+      expect(
+        prefixed({...now, (6, 10): 'ends with it'}..remove((7, 10))),
+        isFalse,
+      );
+      expect(prefixed({...now, (7, 10): 'other'}), isFalse);
+      expect(prefixed({...now, (5, 10): 'other'}), isFalse);
+    });
   });
 }
