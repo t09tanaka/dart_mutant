@@ -314,9 +314,8 @@ int? _constantDeclaration(Expression node) {
       !variable.name.lexeme.startsWith('_')) {
     return null;
   }
-  final owner = list.parent;
-  if (owner is! TopLevelVariableDeclaration &&
-      !(owner is FieldDeclaration && owner.isStatic)) {
+  // A top-level variable or a static field (a constant is no other field).
+  if (list.parent is VariableDeclarationStatement) {
     return null;
   }
   return node is TypedLiteral ||
@@ -327,12 +326,7 @@ int? _constantDeclaration(Expression node) {
 }
 
 /// True when [node], a constant, says so itself: `const [1]`.
-bool _startsWithConst(Expression node) => switch (node) {
-  TypedLiteral(:final constKeyword) => constKeyword != null,
-  InstanceCreationExpression(:final keyword) => keyword?.lexeme == 'const',
-  RecordLiteral(:final constKeyword) => constKeyword != null,
-  _ => false,
-};
+bool _startsWithConst(Expression node) => node.beginToken.lexeme == 'const';
 
 /// Where [mutant] (the mutant [id] of [source], whose syntax tree is [unit])
 /// could be built in: every expression and statement around it that is an

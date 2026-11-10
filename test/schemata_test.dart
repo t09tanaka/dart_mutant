@@ -420,6 +420,7 @@ int $dartMutantElsewhere() {
         for (final source in [
           'const l = [1];',
           'void f() { const l = [1]; }',
+          'void f() { const _l = [1]; }',
           'const _a = [1], _b = [2];',
           'const _n = 1 + 2;',
           'const _s = "a\${1}";',
