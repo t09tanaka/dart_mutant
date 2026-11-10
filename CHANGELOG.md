@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 (2026-11-10)
 
 - **The mutants in a private constant are built in.** The initializer of a
   top-level `const` or a `static const` whose name starts with `_`, when
