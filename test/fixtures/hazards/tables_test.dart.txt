@@ -1,0 +1,48 @@
+import 'package:hazard_fixture/tables.dart';
+import 'package:hazard_fixture/tables_user.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('limit', () {
+    expect(limit(0), 1);
+    expect(limit(1), 2);
+    expect(limit(2), 3);
+  });
+
+  test('identity of a constant', () {
+    expect(sameAsLiteral(), isTrue);
+    expect(sameConstants(), isTrue);
+  });
+
+  test('a constant cannot be changed', () {
+    expect(change, throwsUnsupportedError);
+    expect(grow, throwsUnsupportedError);
+    expect(look('x'), 1);
+    expect(look('y'), 2);
+    expect(known(1), isTrue);
+    expect(known(9), isFalse);
+  });
+
+  test('constants in constant places', () {
+    expect(sum(), 30);
+    expect(sum(values: [1]), 1);
+    expect(kind(2), 'two');
+    expect(kind(7), 'span');
+    expect(kind(0), 'other');
+    expect(boxed(), 12);
+    expect(nested(), 20);
+  });
+
+  test('a public constant in another library and here', () {
+    const here = [publicLimit, 1];
+    expect(here.first, 7);
+    expect(named(publicLimit), 'limit');
+    expect(named(1), 'no 2');
+    expect(usersLimits, [7, 8]);
+  });
+
+  test('a constant used at runtime only', () {
+    expect(Grid.total(), 20);
+    expect(localSum(), 12);
+  });
+}

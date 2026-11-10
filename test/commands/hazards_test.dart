@@ -72,6 +72,15 @@ import 'package:test/test.dart';
 ///   away what it puts there. The mutants that count such a file fail on
 ///   it, and on nothing a start of the test runner with `--fail-fast`
 ///   leaves.
+/// - `tables`: constants that a mutant may change, and that a program built
+///   with every mutant in it would have to make something else than a
+///   constant: a `const` list, map and set at the top level and in a class
+///   (one that no test reads to the end, one whose identity a test asks for,
+///   one that cannot be changed), used where a constant is required (an
+///   annotation, a default value, a `case`, another constant, a `const`
+///   constructor), a public one that another library of the package uses in a
+///   `case` and one that a test file uses, and one that only runs. Its
+///   mutants must have the status they have with a start of their own.
 typedef _Run = ({
   Map<String, List<String>> mutants,
   int exitCode,
@@ -108,6 +117,7 @@ void main() {
     'share',
     'diag',
     'whoami',
+    'tables',
   ];
 
   /// The files with more than one test file, and their test files.
@@ -149,6 +159,7 @@ void main() {
     'spool': '40 of 40 built in, 32 killed there, 8 left',
     // Every failure of it is printed in the form of a compiler error.
     'diag': '4 of 4 built in, 0 killed there, 4 left',
+    'tables': '40 of 94 built in, 33 killed there, 7 left',
   };
 
   /// Files with fewer mutants than are built in ([mutantsToBuildIn]), and how
@@ -287,6 +298,7 @@ dev_dependencies:
 ''');
     final targets = <Map<String, Object?>>[];
     write('lib/elsewhere.dart', fixture('elsewhere'));
+    write('lib/tables_user.dart', fixture('tables_user'));
     write('bin/shout.dart', fixture('shout_bin'));
     for (final name in files) {
       write('lib/$name.dart', fixture(name));
